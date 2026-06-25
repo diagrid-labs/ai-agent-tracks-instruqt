@@ -1,0 +1,19 @@
+{
+  "number": 201,
+  "title": "Fix nil pointer in state management for concurrent reads",
+  "body": "Addresses the race condition when multiple goroutines read the same state concurrently. Fixes #8421. Tested with the new concurrent stress test.",
+  "files": [
+    {
+      "filename": "pkg/state/manager.go",
+      "additions": 8,
+      "deletions": 3,
+      "patch": "- if s.data != nil {\n+ if s.mu.Lock(); s.data != nil {\n+   defer s.mu.Unlock()"
+    },
+    {
+      "filename": "pkg/state/manager_test.go",
+      "additions": 22,
+      "deletions": 0,
+      "patch": "+ func TestConcurrentStateReads(t *testing.T) {\n+   // stress test with 100 goroutines"
+    }
+  ]
+}

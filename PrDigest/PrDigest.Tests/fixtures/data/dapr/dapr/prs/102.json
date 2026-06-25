@@ -1,0 +1,10 @@
+{
+  "number": 102,
+  "title": "Refactor scheduler internals",
+  "body": "Large internal refactor with no linked issue.",
+  "files": [
+    { "filename": "src/A.cs", "additions": 400, "deletions": 200, "patch": "@@ big @@ patch" },
+    { "filename": "src/B.cs", "additions": 150, "deletions": 90, "patch": "@@ big @@ patch" },
+    { "filename": "src/C.cs", "additions": 80, "deletions": 10, "patch": "@@ big @@ patch" }
+  ]
+}

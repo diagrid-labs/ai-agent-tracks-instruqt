@@ -1,0 +1,73 @@
+{
+  "number": 206,
+  "title": "Add observability for state store operations",
+  "body": "Instruments state store Get/Set/Delete operations with OpenTelemetry metrics. Helps operators track state store performance.",
+  "files": [
+    {
+      "filename": "pkg/state/metrics.go",
+      "additions": 67,
+      "deletions": 0,
+      "patch": "+ metric definitions for state operations"
+    },
+    {
+      "filename": "pkg/state/store.go",
+      "additions": 89,
+      "deletions": 34,
+      "patch": "- state operations instrumented"
+    },
+    {
+      "filename": "pkg/state/store_test.go",
+      "additions": 156,
+      "deletions": 0,
+      "patch": "+ tests for metrics recording"
+    },
+    {
+      "filename": "pkg/state/mock_test.go",
+      "additions": 23,
+      "deletions": 0,
+      "patch": "+ mock metrics collector"
+    },
+    {
+      "filename": "pkg/grpc/state_handler.go",
+      "additions": 34,
+      "deletions": 18,
+      "patch": "- handler metrics updated"
+    },
+    {
+      "filename": "pkg/http/state_handler.go",
+      "additions": 38,
+      "deletions": 19,
+      "patch": "- HTTP handler metrics"
+    },
+    {
+      "filename": "docs/state_observability.md",
+      "additions": 112,
+      "deletions": 0,
+      "patch": "+ observability guide"
+    },
+    {
+      "filename": "examples/metrics/state_metrics.go",
+      "additions": 78,
+      "deletions": 0,
+      "patch": "+ example usage"
+    },
+    {
+      "filename": "internal/observability/config.go",
+      "additions": 28,
+      "deletions": 15,
+      "patch": "- metric configuration"
+    },
+    {
+      "filename": "internal/observability/provider.go",
+      "additions": 44,
+      "deletions": 12,
+      "patch": "- metrics provider updated"
+    },
+    {
+      "filename": "pkg/state/README.md",
+      "additions": 15,
+      "deletions": 8,
+      "patch": "- added metrics section"
+    }
+  ]
+}

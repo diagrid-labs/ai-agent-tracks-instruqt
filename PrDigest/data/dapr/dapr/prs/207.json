@@ -1,0 +1,49 @@
+{
+  "number": 207,
+  "title": "Support custom retry policies for pubsub subscriptions",
+  "body": "Allows applications to define custom retry behavior per subscription. Resolves #8612. Includes comprehensive tests.",
+  "files": [
+    {
+      "filename": "pkg/pubsub/subscription.go",
+      "additions": 34,
+      "deletions": 8,
+      "patch": "- type Subscription struct {\n+   RetryPolicy RetryPolicy"
+    },
+    {
+      "filename": "pkg/pubsub/retry_policy.go",
+      "additions": 67,
+      "deletions": 0,
+      "patch": "+ type RetryPolicy struct {\n+   MaxRetries int"
+    },
+    {
+      "filename": "pkg/pubsub/handler.go",
+      "additions": 23,
+      "deletions": 12,
+      "patch": "- retry logic handler"
+    },
+    {
+      "filename": "docs/pubsub_advanced.md",
+      "additions": 56,
+      "deletions": 0,
+      "patch": "+ custom retry policy documentation"
+    },
+    {
+      "filename": "examples/pubsub_retry_example.go",
+      "additions": 42,
+      "deletions": 0,
+      "patch": "+ example with retry policies"
+    },
+    {
+      "filename": "pkg/pubsub/config.go",
+      "additions": 12,
+      "deletions": 5,
+      "patch": "- retry policy configuration"
+    },
+    {
+      "filename": "pkg/pubsub/middleware.go",
+      "additions": 34,
+      "deletions": 19,
+      "patch": "- middleware for retry handling"
+    }
+  ]
+}

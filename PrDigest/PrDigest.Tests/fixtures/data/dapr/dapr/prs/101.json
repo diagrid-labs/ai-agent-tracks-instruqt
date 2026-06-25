@@ -1,0 +1,9 @@
+{
+  "number": 101,
+  "title": "Fix retry backoff in workflow client",
+  "body": "Fixes #45. Corrects exponential backoff.",
+  "files": [
+    { "filename": "src/Workflow/RetryPolicy.cs", "additions": 12, "deletions": 4, "patch": "@@ retry @@ small patch" },
+    { "filename": "test/Workflow/RetryPolicyTests.cs", "additions": 30, "deletions": 0, "patch": "@@ tests @@ added" }
+  ]
+}
