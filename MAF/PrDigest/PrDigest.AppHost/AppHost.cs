@@ -1,0 +1,58 @@
+using CommunityToolkit.Aspire.Hosting.Dapr;
+using Diagrid.Aspire.Hosting.Dashboard;
+using CopperDusk.Aspire.Hosting.Yaml;
+
+var builder = DistributedApplication.CreateBuilder(args);
+
+// Aspire owns the Valkey container life cycle (started/stopped with the run).
+// Port 16379 is pinned to match the hardcoded redisHost in resources/statestore.yaml.
+// The password is supplied as a secret parameter and must match redisPassword in that file.
+var statePassword = builder.AddParameter("cache-password", "state-store-123", secret: true);
+var stateStore = builder
+    .AddValkey("statestore", 16379, statePassword)
+    .WithContainerName("pr-digest-state")
+    .WithDataVolume("pr-digest-state-data");
+
+// The PR JSON fixtures live under the `data` folder inside MAF/PrDigest (one level above
+// this AppHost project). Pass the base data dir as an absolute path so discovery never
+// depends on the working directory Aspire assigns — and never falls back to the repo-root data.
+var dataDir = Path.GetFullPath(Path.Combine(builder.AppHostDirectory, "..", "data"));
+
+builder.AddProject<Projects.PrDigest_ApiService>("pr-digest")
+    .WithReference(stateStore)
+    .WaitFor(stateStore)
+    .WithEnvironment("DATA_DIR", dataDir)
+    // Repo org/name selector; resolves to <DATA_DIR>/dapr/dapr.
+    .WithEnvironment("REPO", "dapr/dapr")
+    // Pin the API's HTTP endpoint to a fixed host port so the RUNBOOK URLs are stable.
+    .WithEndpoint("http", endpoint => endpoint.Port = 5090)
+    .WithDaprSidecar(new DaprSidecarOptions
+    {
+        AppId = "pr-digest",
+        ResourcesPaths = ["resources"]
+    });
+
+// The Diagrid dev dashboard runs in a container, so it reaches the host's Valkey
+// via host.docker.internal. The password must match the cache-password parameter.
+var stateComponent = builder.AddYamlFile("dashboard-state", new
+{
+    apiVersion = "dapr.io/v1alpha1",
+    kind = "Component",
+    metadata = new { name = "statestore-dashboard" },
+    spec = new
+    {
+        type = "state.redis",
+        version = "v1",
+        metadata = new object[]
+        {
+            new { name = "redisHost", value = "host.docker.internal:16379" },
+            new { name = "redisPassword", value = statePassword },
+            new { name = "actorStateStore", value = "true" },
+        },
+    },
+});
+
+builder.AddDiagridDashboard(stateComponent)
+    .WaitFor(stateStore);
+
+builder.Build().Run();

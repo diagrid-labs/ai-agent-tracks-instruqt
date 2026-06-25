@@ -1,0 +1,36 @@
+@endpoint = http://localhost:5090
+@instanceId = {{$guid}}
+
+### Trigger a digest run
+# Schedules a new PrDigestWorkflow instance. Returns { "instanceId": "run-1" }.
+POST {{endpoint}}/start
+Content-Type: application/json
+
+{
+  "id": "{{instanceId}}",
+  "repo": "dapr/dapr",
+  "maxPrs": 5
+}
+
+### Get workflow status
+# Poll until state.runtimeStatus is "Completed". Returns { state, output }.
+GET {{endpoint}}/status/{{instanceId}}
+
+### Pause (suspend) a running workflow
+POST {{endpoint}}/pause/{{instanceId}}
+
+### Resume a suspended workflow
+POST {{endpoint}}/resume/{{instanceId}}
+
+### Terminate a workflow
+POST {{endpoint}}/terminate/{{instanceId}}
+
+### Trigger a second run (used for crash-and-resume verification)
+POST {{endpoint}}/start
+Content-Type: application/json
+
+{
+  "id": "run-2",
+  "repo": "dapr/dapr",
+  "maxPrs": 7
+}
