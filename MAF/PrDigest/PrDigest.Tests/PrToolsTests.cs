@@ -29,8 +29,8 @@ public class PrToolsTests
         Assert.Contains(result.Files, f => f.Patch.EndsWith("…[truncated]"));
     }
 
-    // The tool's metadata is the schema the model sees. A small model (llama3.2:3b)
-    // copies nouns from the description into argument names, so the description must not
+    // The tool's metadata is the schema the model sees. Smaller models tend to
+    // copy nouns from the description into argument names, so the description must not
     // contain words that read like parameters (e.g. "snapshot"), and the single integer
     // parameter must be named and described so the model emits {"number": <n>}.
     [Fact]

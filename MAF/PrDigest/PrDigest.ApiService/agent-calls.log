@@ -1,0 +1,7 @@
+2026-06-29T17:36:24.8500290Z	9893	fix(api): standardize Configuration API errors
+2026-06-29T17:36:24.9870420Z	10053	test: validate pubsub CloudEvent IDs are UUIDs
+2026-06-29T17:36:25.0386390Z	9855	feat(outbox): add outboxInternalTopic metadata to override internal topic name
+2026-06-29T17:36:25.2845910Z	10093	perf: store raw perf reports per version and automate chart publishing
+2026-06-29T17:36:25.3053220Z	10054	Fix/workflow save before dispatch
+2026-06-29T17:36:25.4803670Z	9974	feat: search and vector blocks
+2026-06-29T17:36:25.5226020Z	9719	fix: make DeliverBulk fallthru consistent with Deliver for empty status

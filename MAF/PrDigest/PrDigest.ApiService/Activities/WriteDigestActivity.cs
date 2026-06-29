@@ -1,4 +1,5 @@
 using Dapr.Workflow;
+using PrDigest.ApiService.Demo;
 using PrDigest.ApiService.Digest;
 using PrDigest.ApiService.Models;
 
@@ -9,8 +10,7 @@ public sealed partial class WriteDigestActivity(ILogger<WriteDigestActivity> log
 {
     public override async Task<string> RunAsync(WorkflowActivityContext context, WriteDigestInput input)
     {
-        var outputDir = Environment.GetEnvironmentVariable("DIGEST_OUTPUT_DIR") ?? Directory.GetCurrentDirectory();
-        var path = Path.Combine(outputDir, "pr-digest.md");
+        var path = Path.Combine(DemoPaths.OutputDirectory(), "pr-digest.md");
 
         var markdown = DigestMarkdownWriter.Render(input.Repo, input.Headline, input.Ranked);
         await File.WriteAllTextAsync(path, markdown);

@@ -6,6 +6,7 @@ using PrDigest.ApiService.Agents;
 using PrDigest.ApiService.Digest;
 using PrDigest.ApiService.Models;
 using PrDigest.ApiService.Risk;
+using PrDigest.ApiService.Tools;
 
 namespace PrDigest.ApiService.Workflows;
 
@@ -47,18 +48,24 @@ public sealed partial class PrDigestWorkflow : Workflow<PrDigestInput, PrDigestO
     {
         var risk = RiskModel.Score(pr.Metrics);
 
-        // The analyzer runs on a small local model that can mis-format the GetPullRequest
-        // tool call. A single faulted agent call must not fail the whole fan-out, so degrade
-        // this one PR (Degraded: true) instead of letting the exception propagate through
+        // Fetch the PR detail deterministically (local file I/O)
+        var detail = await context.CallActivityAsync<PrToolResult>(
+            nameof(FetchPullRequestDetailActivity), pr.Number);
+
+        // A single faulted agent call must not fail the whole fan-out, so degrade this one
+        // PR (Degraded: true) instead of letting the exception propagate through
         // Task.WhenAll. Deterministic metrics and risk are still reported.
         PrAnalysis? analysis;
         try
         {
+            // Replay-safe: this prints once per PR on first execution and stays silent when
+            // the workflow replays after a crash — so on resume only the not-yet-analyzed
+            // PRs log, visibly demonstrating that completed agent calls are not repeated.
+            LogAnalyzing(logger, pr.Number);
             analysis = await context.RunAgentAndDeserializeAsync<PrAnalysis>(
                 agent: analyzer,
                 logger: logger,
-                message: $"Analyze pull request #{pr.Number}. Call GetPullRequest with arguments {{\"number\": {pr.Number}}} once, " +
-                         "then return strict JSON {\"summary\": string, \"linkedIssue\": string|null, \"riskRationale\": string}.");
+                message: BuildAnalysisPrompt(detail));
         }
         catch (Exception ex)
         {
@@ -66,9 +73,30 @@ public sealed partial class PrDigestWorkflow : Workflow<PrDigestInput, PrDigestO
             analysis = null;
         }
 
+        // Durably record that this PR's agent call ran. Checkpointed like any activity, so on
+        // resume it replays from history (no duplicate ledger line) and the deterministic
+        // crash gate inside it fires exactly once.
+        await context.CallActivityAsync<bool>(
+            nameof(RecordAgentCallActivity), new AgentCallRecord(pr.Number, pr.Title));
+
         return analysis is null
             ? new PrResult(pr.Number, pr.Title, pr.Metrics, risk, Analysis: null, Degraded: true)
             : new PrResult(pr.Number, pr.Title, pr.Metrics, risk, analysis, Degraded: false);
+    }
+
+    private static string BuildAnalysisPrompt(PrToolResult pr)
+    {
+        var files = string.Join("\n", pr.Files.Select(f =>
+            $"- {f.Filename} (+{f.Additions}/-{f.Deletions})\n{f.Patch}"));
+        var m = pr.Metrics;
+        var linkedIssue = m.LinkedIssue is int li ? $"#{li}" : "null";
+        return
+            $"Analyze pull request #{pr.Number}: \"{pr.Title}\".\n\n" +
+            $"Body:\n{pr.Body}\n\n" +
+            $"Changed files ({m.FileCount}):\n{files}\n\n" +
+            $"Metrics: fileCount={m.FileCount}, additions={m.Additions}, deletions={m.Deletions}, " +
+            $"totalChanges={m.TotalChanges}, hasTests={m.HasTests}, linkedIssue={linkedIssue}.\n\n" +
+            "Return strict JSON {\"summary\": string, \"linkedIssue\": string|null, \"riskRationale\": string}.";
     }
 
     private static string BuildHeadlinePrompt(IReadOnlyList<RankedPr> ranked)
@@ -85,6 +113,9 @@ public sealed partial class PrDigestWorkflow : Workflow<PrDigestInput, PrDigestO
 
     [LoggerMessage(LogLevel.Information, "Completed PR digest {InstanceId}: {Count} PRs -> {Path}")]
     static partial void LogDone(ILogger logger, string instanceId, int count, string path);
+
+    [LoggerMessage(LogLevel.Information, "🤖 Analyzing PR #{Number} with the PrAnalyzer agent")]
+    static partial void LogAnalyzing(ILogger logger, int number);
 
     [LoggerMessage(LogLevel.Warning, "Analysis degraded for PR #{Number}: {Reason}")]
     static partial void LogAnalysisDegraded(ILogger logger, int number, string reason);

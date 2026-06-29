@@ -143,6 +143,13 @@ dmypy.json
 .ipynb_checkpoints
 
 ####################
+# Secrets
+####################
+# Local Dapr secret store file (holds the OpenAI API key). The committed
+# secrets.example.json is the template to copy from.
+MAF/PrDigest/PrDigest.AppHost/secrets.json
+
+####################
 # OS / Misc
 ####################
 .DS_Store

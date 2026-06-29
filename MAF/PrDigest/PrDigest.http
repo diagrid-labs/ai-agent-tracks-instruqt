@@ -3,27 +3,29 @@
 
 ### Trigger a digest run
 # Schedules a new PrDigestWorkflow instance. Returns { "instanceId": "run-1" }.
+# @name startRequest
 POST {{endpoint}}/start
 Content-Type: application/json
 
 {
   "id": "{{instanceId}}",
   "repo": "dapr/dapr",
-  "maxPrs": 5
+  "maxPrs": 7
 }
 
 ### Get workflow status
+@startInstanceId = {{startRequest.response.body.$.instanceId}}
 # Poll until state.runtimeStatus is "Completed". Returns { state, output }.
-GET {{endpoint}}/status/{{instanceId}}
+GET {{endpoint}}/status/{{startInstanceId}}
 
 ### Pause (suspend) a running workflow
-POST {{endpoint}}/pause/{{instanceId}}
+POST {{endpoint}}/pause/{{startInstanceId}}
 
 ### Resume a suspended workflow
-POST {{endpoint}}/resume/{{instanceId}}
+POST {{endpoint}}/resume/{{startInstanceId}}
 
 ### Terminate a workflow
-POST {{endpoint}}/terminate/{{instanceId}}
+POST {{endpoint}}/terminate/{{startInstanceId}}
 
 ### Trigger a second run (used for crash-and-resume verification)
 POST {{endpoint}}/start

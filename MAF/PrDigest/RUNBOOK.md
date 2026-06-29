@@ -16,46 +16,39 @@ Docker must be running. The Aspire AppHost manages a Valkey container on host po
 docker ps
 ```
 
-### Ollama
+### OpenAI
 
-The application uses the `llama3.2:3b` model served by a local Ollama instance. If Ollama is not yet running, start the server and pull the model before launching the app.
+The application uses OpenAI's `gpt-4o-mini` model through the Dapr conversation API. You need an OpenAI API key with access to chat completions.
 
-**Install Ollama** (if not already installed):
+**Get an API key:**
 
-- macOS / Windows: download and install from [ollama.com/download](https://ollama.com/download).
-- Linux: `curl -fsSL https://ollama.com/install.sh | sh`
+Create or copy a key from the [OpenAI API keys dashboard](https://platform.openai.com/api-keys).
 
-**Start the Ollama server:**
+**Add the key to the local secrets file:**
 
-The server must be running and listening on `http://localhost:11434`. The desktop app (macOS/Windows) starts it automatically once launched. To start it manually from a terminal:
+The key is read from a local Dapr secret store (`secretstores.local.file`), not committed to source control. Copy the template and fill in your key:
 
-```sh
-ollama serve
+**PowerShell (Windows):**
+
+```powershell
+Copy-Item PrDigest.AppHost/secrets.example.json PrDigest.AppHost/secrets.json
 ```
 
-Leave this terminal open — the server runs in the foreground. (If you see `address already in use`, the server is already running and you can skip this step.)
+**bash (macOS/Linux):**
 
-**Verify the server is reachable** (in a separate terminal):
-
-```sh
-curl http://localhost:11434/v1/models
+```bash
+cp PrDigest.AppHost/secrets.example.json PrDigest.AppHost/secrets.json
 ```
 
-Expected: a JSON response listing available models.
+Then edit `PrDigest.AppHost/secrets.json` and set your key:
 
-**Pull the model:**
-
-```sh
-ollama pull llama3.2:3b
+```json
+{
+  "openai-api-key": "sk-..."
+}
 ```
 
-This downloads the model (~2 GB) on first run. Confirm it is available:
-
-```sh
-ollama list
-```
-
-Expected: `llama3.2:3b` appears in the list.
+`secrets.json` is git-ignored. The conversation component (`resources/conversation.yaml`) resolves the key via `secretKeyRef` against the `local-secret-store` component (`resources/secretstore.yaml`). The model is configured in `conversation.yaml` (`gpt-4o-mini` by default) and can be changed to any chat-capable OpenAI model.
 
 ### .NET SDK
 
@@ -205,139 +198,116 @@ You should see a mix of LOW (scores 0–1), MEDIUM (scores 2–4), and HIGH (sco
 
 ## Crash-and-Resume Verification
 
-This section demonstrates that durable state in Valkey allows the workflow to resume after an interruption without re-analyzing completed PRs.
+This is the durability demo: the workflow is interrupted mid-run by a **real process crash**, and on restart it resumes from durable Valkey state — **without re-running the `PrAnalyzer` agent (LLM) calls that already completed.** A deterministic crash gate and an append-only *agent-call ledger* make this provable instead of something you take on faith.
 
-### Step 1: Start a Fresh Run
+### How it works
+
+- **Deterministic crash:** set `CRASH_AFTER_AGENT_CALLS=<N>` before launching. The API hard-crashes (via `Environment.FailFast`) exactly once, right after the Nth agent call executes. A marker file (`agent-calls.crash-marker`) is written so the restarted process never crashes again at the same point.
+- **The agent-call ledger:** every executed agent call appends one line to `agent-calls.log` — `<timestamp>\tPR #<number>\t<title>`. Recording happens inside a *checkpointed workflow activity*, so on resume a completed record is replayed from durable history and is **not** re-appended. The finished ledger therefore contains each PR exactly once, with a visible time gap at the moment of restart.
+
+Both files are written to the digest output directory (`DIGEST_OUTPUT_DIR`, or the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find them easily.
+
+### Step 1: Arm the crash gate and launch
+
+Crash after 3 agent calls (7 PRs total, so 4 remain for the resumed run). Set the env vars in the shell that launches the AppHost, **before** `aspire run`:
 
 **PowerShell (Windows):**
 
 ```powershell
-$endpoint = "http://localhost:5090"
-
-$body = @{
-  id       = "run-2"
-  repo     = "dapr/dapr"
-  maxPrs   = 7
-} | ConvertTo-Json
-
-curl -X POST "$endpoint/start" -H "Content-Type: application/json" -d $body
+$env:DIGEST_OUTPUT_DIR = "$PWD\digest-out"
+$env:CRASH_AFTER_AGENT_CALLS = "3"
+aspire run
 ```
 
 **bash (macOS/Linux):**
 
 ```bash
-endpoint="http://localhost:5090"
+export DIGEST_OUTPUT_DIR="$PWD/digest-out"
+export CRASH_AFTER_AGENT_CALLS=3
+aspire run
+```
 
-curl -X POST "$endpoint/start" -H "Content-Type: application/json" -d '{
-  "id": "run-2",
+### Step 2: Start a run
+
+```bash
+curl -X POST "http://localhost:5090/start" -H "Content-Type: application/json" -d '{
+  "id": "run-crash",
   "repo": "dapr/dapr",
   "maxPrs": 7
 }'
 ```
 
-### Step 2: Wait for Partial Completion
+### Step 3: Watch it crash
 
-Poll `/status/run-2` and wait for it to show `Running`:
+The API process terminates **by itself** after the 3rd agent call. In the console (or the `pr-digest` logs in the Aspire dashboard) you will see something like:
+
+```
+🤖 Analyzing PR #201 with the PrAnalyzer agent
+📒 Recorded agent call for PR #201 (call #1 in this process).
+📒 Recorded agent call for PR #202 (call #2 in this process).
+💥 CRASH GATE TRIPPED after 3 agent call(s) — killing the process to simulate a crash.
+```
+
+Inspect the ledger so far — it holds ~2 lines (the call that tripped the gate is intentionally recorded only after restart, so it is never duplicated):
+
+```bash
+cat "$DIGEST_OUTPUT_DIR/agent-calls.log"
+```
+
+### Step 4: Disarm and restart
+
+Disable the gate so the resumed run can finish, then relaunch (the marker file would also prevent a second crash, but unsetting is clearer):
 
 **PowerShell (Windows):**
 
 ```powershell
-$endpoint = "http://localhost:5090"
-
-while ($true) {
-  $status = curl -s "$endpoint/status/run-2" | ConvertFrom-Json
-  Write-Host "Status: $($status.RuntimeStatus)"
-
-  if ($status.RuntimeStatus -eq "Running") {
-    Write-Host "Workflow is running. Killing AppHost now..."
-    break
-  }
-
-  Start-Sleep -Seconds 1
-}
+Remove-Item Env:CRASH_AFTER_AGENT_CALLS
+aspire run
 ```
 
 **bash (macOS/Linux):**
+
+```bash
+unset CRASH_AFTER_AGENT_CALLS   # or: export CRASH_AFTER_AGENT_CALLS=0
+aspire run
+```
+
+Aspire reconnects to the same Valkey container (its data volume persists across restarts), the workflow engine rehydrates instance `run-crash`, and it resumes automatically — you do **not** call `/resume` (that is only for workflows suspended via `/pause`).
+
+### Step 5: Poll until completed
 
 ```bash
 endpoint="http://localhost:5090"
-
 while true; do
-  runtime=$(curl -s "$endpoint/status/run-2" | jq -r '.RuntimeStatus')
+  runtime=$(curl -s "$endpoint/status/run-crash" | jq -r '.RuntimeStatus')
   echo "Status: $runtime"
-
-  if [ "$runtime" = "Running" ]; then
-    echo "Workflow is running. Killing AppHost now..."
-    break
-  fi
-
-  sleep 1
-done
-```
-
-### Step 3: Kill the AppHost
-
-In the terminal running `dotnet run`, press **Ctrl+C** to stop the application abruptly. This simulates a process crash mid-workflow.
-
-### Step 4: Restart the AppHost
-
-Rerun the same command (identical on both platforms):
-
-```sh
-dotnet run --project PrDigest/PrDigest.AppHost
-```
-
-Wait for the Aspire dashboard to appear and resources to reach `Running` (about 10–15 seconds).
-
-### Step 5: Poll Status for Completion
-
-**PowerShell (Windows):**
-
-```powershell
-$endpoint = "http://localhost:5090"  # Fixed API port (same across restarts)
-
-while ($true) {
-  $status = curl -s "$endpoint/status/run-2" | ConvertFrom-Json
-  Write-Host "Status: $($status.RuntimeStatus)"
-
-  if ($status.RuntimeStatus -eq "Completed") {
-    Write-Host "Resumed and completed. Output: $($status.Output | ConvertTo-Json -Depth 10)"
-    break
-  }
-
-  Start-Sleep -Seconds 2
-}
-```
-
-**bash (macOS/Linux):**
-
-```bash
-endpoint="http://localhost:5090"  # Fixed API port (same across restarts)
-
-while true; do
-  status=$(curl -s "$endpoint/status/run-2")
-  runtime=$(echo "$status" | jq -r '.RuntimeStatus')
-  echo "Status: $runtime"
-
-  if [ "$runtime" = "Completed" ]; then
-    echo "Resumed and completed. Output:"
-    echo "$status" | jq '.Output'
-    break
-  fi
-
+  [ "$runtime" = "Completed" ] && break
   sleep 2
 done
 ```
 
-Expected: the workflow resumes from where it stopped and eventually completes. The durable state in Valkey (keyed by instance ID "run-2") persists the analysis results for PRs already processed, so only the remaining PRs are analyzed.
+### Verification — durability, proven
 
-### Verification
+Inspect the finished ledger:
 
-To confirm that completed PRs were not re-run:
+```bash
+cat "$DIGEST_OUTPUT_DIR/agent-calls.log"
+```
 
-1. Before the kill, capture the console output and note which PRs had started analysis.
-2. After the restart and resume, verify that the first N completed PRs do not appear again in the logs (no duplicate "analyzing PR X" messages).
-3. Open the final `pr-digest.md` and confirm all 7 PRs are ranked (no gaps due to incomplete runs).
+Confirm:
+
+1. **Exactly 7 lines — one per PR, no duplicate PR numbers.** The agent calls that completed before the crash were *not* re-run; their results came from durable history.
+2. **A clear timestamp gap** between the pre-crash lines and the rest — the wall-clock cost of the crash + restart, sitting inside a single logical workflow run.
+3. The resumed console shows `🤖 Analyzing PR #...` only for PRs that had not finished — already-analyzed PRs stay silent (replay-safe logging suppresses replayed log lines).
+4. `pr-digest.md` contains all 7 PRs ranked, with no gaps.
+
+A quick scripted check (bash):
+
+```bash
+total=$(grep -c . "$DIGEST_OUTPUT_DIR/agent-calls.log")
+unique=$(cut -f2 "$DIGEST_OUTPUT_DIR/agent-calls.log" | sort -u | grep -c .)
+echo "lines=$total unique-PRs=$unique"   # expect both = 7
+```
 
 ## Observability: Traces
 
@@ -375,23 +345,19 @@ export DIGEST_OUTPUT_DIR="/path/to/output"
 dotnet run --project PrDigest/PrDigest.AppHost
 ```
 
-The `pr-digest.md` file will then be written to that directory.
+The `pr-digest.md` file will then be written to that directory. The durability-demo artifacts — `agent-calls.log` (the agent-call ledger) and `agent-calls.crash-marker` (the one-shot crash sentinel) — are written to the **same** directory.
 
 ## Notes
 
 - **Data snapshot:** The 7 PR JSON fixtures (201–207) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
-- **LLM model:** The application uses `llama3.2:3b`, a small local model run via Ollama. AI-generated summaries in the digest are illustrative and reflect the capabilities of this local model; they are not production-grade analyses.
+- **LLM model:** The application uses OpenAI's `gpt-4o-mini` via the Dapr conversation API. AI-generated summaries in the digest are illustrative; they are not production-grade analyses.
 - **Durable state:** The Valkey state store (managed by Aspire) persists all workflow progress, enabling crash-and-resume semantics. A new workflow instance with the same ID will resume from where the previous one was interrupted.
 
 ## Troubleshooting
 
-**Ollama connection refused:**
+**OpenAI authentication or connection errors:**
 
-Ensure Ollama is running (`ollama serve` in a separate terminal) and the endpoint is reachable:
-
-```sh
-curl http://localhost:11434/v1/models
-```
+Confirm `PrDigest.AppHost/secrets.json` exists and its `openai-api-key` value is a valid OpenAI API key with access to the configured model, and that the host has outbound internet access to `api.openai.com`. A missing `secrets.json` will surface as a secret-store load error for `local-secret-store`.
 
 **Valkey connection refused:**
 
@@ -415,4 +381,4 @@ The `pr-digest` resource may still be starting. Check the Aspire dashboard for i
 
 **Workflow never completes:**
 
-Check the Aspire dashboard Traces for errors in activities. Confirm Ollama is responsive (see above). The AI analysis step is the longest; it may take 1–2 minutes per PR with a small model.
+Check the Aspire dashboard Traces for errors in activities. Confirm the OpenAI key is valid and the API is reachable (see above). The AI analysis step is the longest part of the run.

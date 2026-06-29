@@ -1,12 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.AI;
 using Dapr.Workflow;
 using Diagrid.AI.Microsoft.AgentFramework.Hosting;
 using PrDigest.ApiService.Activities;
 using PrDigest.ApiService.Agents;
 using PrDigest.ApiService.Data;
 using PrDigest.ApiService.Models;
-using PrDigest.ApiService.Tools;
 using PrDigest.ApiService.Workflows;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,29 +22,29 @@ var repoDataDir = Path.GetFullPath(Path.Combine(repoPath));
 
 builder.Services.AddSingleton(new GitHubDataReader(repoDataDir));
 
-// The model and Ollama endpoint are owned by the Dapr conversation component
-// (AppHost/resources/conversation-ollama.yaml); the agents talk to Ollama through
+// The model and OpenAI credentials are owned by the Dapr conversation component
+// (AppHost/resources/conversation.yaml); the agents talk to OpenAI through
 // the sidecar's conversation API rather than a directly-constructed chat client.
-var prTools = new PrTools(new GitHubDataReader(repoDataDir));
-AITool[] analyzerTools = [AIFunctionFactory.Create(prTools.GetPullRequest)];
-
+// PR detail is fetched deterministically by FetchPullRequestDetailActivity and
+// passed into the analyzer prompt, so the analyzer makes a single tool-free call.
 builder.Services.AddDaprAgents(
         opt => opt.AddContext(() => PrDigestJsonContext.Default),
         opt =>
         {
             opt.RegisterWorkflow<PrDigestWorkflow>();
             opt.RegisterActivity<ListOpenPullRequestsActivity>();
+            opt.RegisterActivity<FetchPullRequestDetailActivity>();
+            opt.RegisterActivity<RecordAgentCallActivity>();
             opt.RegisterActivity<WriteDigestActivity>();
         })
     .WithAgent(
         agentName: AgentNames.PrAnalyzer,
-        conversationComponentName: "conversation-ollama",
+        conversationComponentName: "conversation-prdigest",
         instructions: AgentInstructions.PrAnalyzer,
-        tools: analyzerTools,
         serviceLifetime: ServiceLifetime.Singleton)
     .WithAgent(
         agentName: AgentNames.Summarize,
-        conversationComponentName: "conversation-ollama",
+        conversationComponentName: "conversation-prdigest",
         instructions: AgentInstructions.Summarize,
         serviceLifetime: ServiceLifetime.Singleton);
 
@@ -57,7 +55,9 @@ app.MapPost("/start", async (
     [FromBody] PrDigestInput input) =>
 {
     var instanceId = await workflowClient.ScheduleNewWorkflowAsync(
-        name: nameof(PrDigestWorkflow), instanceId: input.Id, input: input);
+        name: nameof(PrDigestWorkflow),
+        instanceId: input.Id,
+        input: input);
     return Results.Ok(new { instanceId });
 });
 

@@ -55,3 +55,7 @@ public record RankedPr(int Rank, PrResult Result);
 public record PrDigestInput(string Id, string Repo, int MaxPrs);
 public record PrDigestOutput(string Repo, int PrCount, string DigestPath, string Headline);
 public record WriteDigestInput(string Repo, string Headline, IReadOnlyList<RankedPr> Ranked);
+
+// Durability-demo signal: one record per executed PrAnalyzer agent call, written to the
+// agent-call ledger by RecordAgentCallActivity.
+public record AgentCallRecord(int Number, string Title);
