@@ -1,11 +1,11 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+<Project Sdk="Aspire.AppHost.Sdk/13.3.5">
 
   <ItemGroup>
     <ProjectReference Include="..\PrDigest.ApiService\PrDigest.ApiService.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.Valkey" Version="13.4.6" />
+    <PackageReference Include="Aspire.Hosting.Valkey" Version="13.3.5" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Dapr" Version="13.0.0" />
   </ItemGroup>
 
