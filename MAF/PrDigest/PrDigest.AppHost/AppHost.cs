@@ -59,6 +59,7 @@ var stateComponent = builder.AddYamlFile("dashboard-state", new
 });
 
 builder.AddDiagridDashboard(stateComponent)
+    .WithEndpoint("http", endpoint => endpoint.Port = 58080)
     .WaitFor(stateStore);
 
 builder.Build().Run();
