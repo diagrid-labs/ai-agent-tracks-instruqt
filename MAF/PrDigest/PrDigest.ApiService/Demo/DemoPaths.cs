@@ -5,5 +5,6 @@ namespace PrDigest.ApiService.Demo;
 public static class DemoPaths
 {
     public static string OutputDirectory() =>
-        Environment.GetEnvironmentVariable("DIGEST_OUTPUT_DIR") ?? Directory.GetCurrentDirectory();
+        Environment.GetEnvironmentVariable("DIGEST_OUTPUT_DIR")
+        ?? Path.Combine(Directory.GetParent(Directory.GetCurrentDirectory())!.FullName, "digest-out");
 }

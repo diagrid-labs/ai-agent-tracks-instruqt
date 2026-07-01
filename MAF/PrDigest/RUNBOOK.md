@@ -205,7 +205,7 @@ This is the durability demo: the workflow is interrupted mid-run by a **real pro
 - **Deterministic crash:** set `CRASH_AFTER_AGENT_CALLS=<N>` before launching. The API hard-crashes (via `Environment.FailFast`) exactly once, right after the Nth agent call executes. A marker file (`agent-calls.crash-marker`) is written so the restarted process never crashes again at the same point.
 - **The agent-call ledger:** every executed agent call appends one line to `agent-calls.log` — `<timestamp>\tPR #<number>\t<title>`. Recording happens inside a *checkpointed workflow activity*, so on resume a completed record is replayed from durable history and is **not** re-appended. The finished ledger therefore contains each PR exactly once, with a visible time gap at the moment of restart.
 
-Both files are written to the digest output directory (`DIGEST_OUTPUT_DIR`, or the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find them easily.
+Both files are written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a `digest-out` folder in the parent of the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find them easily.
 
 ### Step 1: Arm the crash gate and launch
 
@@ -329,7 +329,7 @@ For the crash-and-resume verification, you will see:
 
 ## Output Location
 
-By default, `pr-digest.md` is written to the **current working directory** of the `PrDigest.ApiService` process. If you need it elsewhere, set the `DIGEST_OUTPUT_DIR` environment variable before running the Aspire AppHost:
+By default, `pr-digest.md` is written to a **`digest-out` folder in the parent of the current working directory** of the `PrDigest.ApiService` process. If you need it elsewhere, set the `DIGEST_OUTPUT_DIR` environment variable before running the Aspire AppHost:
 
 **PowerShell (Windows):**
 

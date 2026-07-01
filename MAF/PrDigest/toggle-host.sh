@@ -26,13 +26,23 @@ if [[ ! -f "$TARGET_FILE" ]]; then
   exit 1
 fi
 
+# Portable in-place sed: write to a temp file, then move it back.
+# Avoids the GNU (`-i`) vs BSD/macOS (`-i ''`) incompatibility.
+replace_in_place() {
+  local expr="$1"
+  local tmp
+  tmp="$(mktemp)"
+  sed "$expr" "$TARGET_FILE" > "$tmp"
+  mv "$tmp" "$TARGET_FILE"
+}
+
 case "$1" in
   to-any)
-    sed -i 's/localhost/0.0.0.0/g' "$TARGET_FILE"
+    replace_in_place 's/localhost/0.0.0.0/g'
     echo "Replaced 'localhost' with '0.0.0.0' in $TARGET_FILE"
     ;;
   to-local)
-    sed -i 's/0\.0\.0\.0/localhost/g' "$TARGET_FILE"
+    replace_in_place 's/0\.0\.0\.0/localhost/g'
     echo "Replaced '0.0.0.0' with 'localhost' in $TARGET_FILE"
     ;;
   *)

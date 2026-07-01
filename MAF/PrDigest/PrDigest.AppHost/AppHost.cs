@@ -1,6 +1,4 @@
 using CommunityToolkit.Aspire.Hosting.Dapr;
-using Diagrid.Aspire.Hosting.Dashboard;
-using CopperDusk.Aspire.Hosting.Yaml;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -37,29 +35,5 @@ builder.AddProject<Projects.PrDigest_ApiService>("pr-digest")
         AppId = "pr-digest",
         ResourcesPaths = ["resources"]
     });
-
-// The Diagrid dev dashboard runs in a container, so it reaches the host's Valkey
-// via host.docker.internal. The password must match the cache-password parameter.
-var stateComponent = builder.AddYamlFile("dashboard-state", new
-{
-    apiVersion = "dapr.io/v1alpha1",
-    kind = "Component",
-    metadata = new { name = "statestore-dashboard" },
-    spec = new
-    {
-        type = "state.redis",
-        version = "v1",
-        metadata = new object[]
-        {
-            new { name = "redisHost", value = "host.docker.internal:16379" },
-            new { name = "redisPassword", value = statePassword },
-            new { name = "actorStateStore", value = "true" },
-        },
-    },
-});
-
-builder.AddDiagridDashboard(stateComponent)
-    .WithEndpoint("http", endpoint => endpoint.Port = 58080)
-    .WaitFor(stateStore);
 
 builder.Build().Run();
