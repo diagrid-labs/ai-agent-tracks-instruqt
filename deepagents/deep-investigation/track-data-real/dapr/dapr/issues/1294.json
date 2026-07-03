@@ -1,0 +1,47 @@
+{
+  "type": "issue",
+  "number": 1294,
+  "title": "Panic while using cosmos db output binding",
+  "state": "closed",
+  "body": "<!-- If you need to report a security issue please visit https://docs.dapr.io/operations/support/support-security-issues -->\r\n\r\n## In what area(s)?\r\ncosmos db binding\r\n\r\ndocs - https://docs.dapr.io/reference/components-reference/supported-bindings/cosmosdb/\r\n\r\n## What version of Dapr?\r\n1,4\r\nself hosted\r\n\r\n## Expected Behavior\r\n\r\ndoing a POST on http://localhost:58219/v1.0/bindings/cosmosdb-output should create an item in cosmos container.\r\n\r\n\r\n## Actual Behavior\r\n\r\n[dapr-second-dapr_e1dcfc90-c]: panic: reflect: call of reflect.Value.Elem on map Value\r\n[dapr-second-dapr_e1dcfc90-c]:\r\n[dapr-second-dapr_e1dcfc90-c]: goroutine 2194 [running]:\r\n[dapr-second-dapr_e1dcfc90-c]: reflect.Value.Elem({0x2c7eaa0, 0xc000d392c0, 0xc0010a8670})\r\n[dapr-second-dapr_e1dcfc90-c]: C:/hostedtoolcache/windows/go/1.17.1/x64/src/reflect/value.go:1178 +0x15a\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/a8m/documentdb.DefaultIdentificationHydrator(0xc000522540, {0x2c7eaa0, 0xc000d392c0})\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/a8m/documentdb@v1.3.0/documentdb.go:29 +0xa9\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/a8m/documentdb.(*DocumentDB).CreateDocument(0xc000004270, {0xc0005d6be0, 0x20}, {0x2c7eaa0, 0xc000d392c0}, {0xc000144d80, 0x1, 0x1})\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/a8m/documentdb@v1.3.0/documentdb.go:285 +0xbd\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/components-contrib/bindings/azure/cosmosdb.(*CosmosDB).Invoke(0xc000621340, 0xc000d39290)\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/dapr/components-contrib@v1.4.0-rc2/bindings/azure/cosmosdb/cosmosdb.go:134 +0xfc\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/dapr/pkg/runtime.(*DaprRuntime).sendToOutputBinding(0x3db47, {0xc000d67280, 0xf}, 0xc000d39290)\r\n[dapr-second-dapr_e1dcfc90-c]: D:/a/dapr/dapr/pkg/runtime/runtime.go:743 +0x3f2\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/dapr/pkg/http.(*api).onOutputBindingMessage(0xc00033be60, 0xc000728c00)\r\n[dapr-second-dapr_e1dcfc90-c]: D:/a/dapr/dapr/pkg/http/api.go:403 +0x72f\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/dapr/pkg/http.(*server).unescapeRequestParametersHandler.func1(0xc000728c00)\r\n[dapr-second-dapr_e1dcfc90-c]: D:/a/dapr/dapr/pkg/http/server.go:245 +0x71\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/fasthttp/router.(*Router).Handler(0xc000334e00, 0xc000728c00)\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/fasthttp/router@v1.3.8/router.go:414 +0x44a\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/dapr/pkg/diagnostics.(*httpMetrics).FastHTTPMiddleware.func1(0xc000728c00)\r\n[dapr-second-dapr_e1dcfc90-c]: D:/a/dapr/dapr/pkg/diagnostics/http_monitoring.go:187 +0x137\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/dapr/dapr/pkg/diagnostics.HTTPTraceMiddleware.func1(0xc000728c00)\r\n[dapr-second-dapr_e1dcfc90-c]: D:/a/dapr/dapr/pkg/diagnostics/http_tracing.go:48 +0xf2\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/valyala/fasthttp.(*Server).serveConn(0xc000eb6900, {0x39cc558, 0xc000006dd8})\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/valyala/fasthttp@v1.28.0/server.go:2239 +0x10cb\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/valyala/fasthttp.(*workerPool).workerFunc(0xc0001e6e60, 0xc000990e20)\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/valyala/fasthttp@v1.28.0/workerpool.go:223 +0xa9\r\n[dapr-second-dapr_e1dcfc90-c]: github.com/valyala/fasthttp.(*workerPool).getCh.func1()\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/valyala/fasthttp@v1.28.0/workerpool.go:195 +0x38\r\n[dapr-second-dapr_e1dcfc90-c]: created by github.com/valyala/fasthttp.(*workerPool).getCh\r\n[dapr-second-dapr_e1dcfc90-c]: C:/Users/runneradmin/go/pkg/mod/github.com/valyala/fasthttp@v1.28.0/workerpool.go:194 +0x1b5\r\n[dapr-second-dapr_e1dcfc90-c]: The daprd process exited with error code: exit status 2\r\n[dapr-second-dapr_e1dcfc90-c]:\r\n[dapr-second-dapr_e1dcfc90-c]: terminated signal received: shutting down\r\n\r\n\r\n## Steps to Reproduce the Problem\r\n\r\nCreate cosmos binding and make a curl request to do a POST with `create` operation.\r\n\r\n",
+  "labels": [
+    "stale"
+  ],
+  "user": "prabhakarreddy1234",
+  "created_at": "2021-11-11T02:04:45Z",
+  "updated_at": "2021-12-25T02:24:46Z",
+  "comments": [
+    {
+      "user": "yaron2",
+      "body": "Moved to correct repository.",
+      "created_at": "2021-11-11T18:59:48Z"
+    },
+    {
+      "user": "yaron2",
+      "body": "Moved to correct repository.",
+      "created_at": "2021-11-11T18:59:50Z"
+    },
+    {
+      "user": "berndverst",
+      "body": "This is already fixed by #1180 in Release 1.5\r\n\r\nPlease upgrade to Dapr Runtime 1.5.0",
+      "created_at": "2021-11-18T01:37:18Z"
+    },
+    {
+      "user": "dapr-bot",
+      "body": "This issue has been automatically marked as stale because it has not had activity in the last 30 days. It will be closed in the next 7 days unless it is tagged (pinned, good first issue, help wanted or triaged/resolved) or other activity occurs. Thank you for your contributions.",
+      "created_at": "2021-12-18T02:06:11Z"
+    },
+    {
+      "user": "dapr-bot",
+      "body": "This issue has been automatically closed because it has not had activity in the last 37 days. If this issue is still valid, please ping a maintainer and ask them to label it as pinned, good first issue, help wanted or triaged/resolved. Thank you for your contributions.",
+      "created_at": "2021-12-25T02:24:46Z"
+    }
+  ],
+  "linked_pr_numbers": [
+    1180
+  ],
+  "referenced_issue_numbers": [],
+  "html_url": "https://github.com/dapr/components-contrib/issues/1294",
+  "is_seed": false,
+  "partial": false
+}

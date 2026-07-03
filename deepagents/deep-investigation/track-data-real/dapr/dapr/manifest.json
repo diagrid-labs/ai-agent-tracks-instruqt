@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "owner": "dapr",
+  "repo": "dapr",
+  "collected_at": "2026-06-30T18:40:08Z",
+  "source": "github-rest-api",
+  "params": {
+    "issues_state": "open",
+    "max_issues": 5,
+    "prs_state": "open",
+    "max_prs": 5,
+    "include_pr_files": true,
+    "include_comments": true,
+    "max_comments": 50,
+    "max_patch_bytes": 20000,
+    "neighborhood_depth": 2
+  },
+  "seed_issues": [
+    1833
+  ],
+  "counts": {
+    "issues": 10,
+    "prs": 6
+  }
+}
