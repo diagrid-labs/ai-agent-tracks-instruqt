@@ -24,7 +24,7 @@ from pathlib import Path
 OWNER = "dapr"
 REPO = "dapr"
 
-ROOT = Path(os.environ.get("TRACK_DATA_DIR", "/track-data-real"))
+ROOT = Path(os.environ.get("TRACK_DATA_DIR", "track-data-real"))
 DATA_DIR = ROOT / OWNER / REPO
 
 
