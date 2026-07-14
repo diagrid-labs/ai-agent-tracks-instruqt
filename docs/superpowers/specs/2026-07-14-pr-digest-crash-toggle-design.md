@@ -42,20 +42,29 @@ gated by PR number:
 // 💥 DURABILITY DEMO — uncomment the next line for a first run to simulate a crash
 // partway through the fan-out, then comment it out and run again: the workflow
 // rehydrates from Valkey and finishes WITHOUT repeating agent calls already recorded.
-// if (record.Number == 204) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+// if (record.Number == 9893) Environment.FailFast("Simulated crash — demonstrating durable resume.");
 
 new AgentCallLedger(outputDir).Append(record.Number, record.Title, DateTime.UtcNow);
 ```
 
+The run pulls the first 7 PRs from `data/dapr/dapr/prs` (the `GitHubDataReader` sorts the ten
+fixtures ascending by number and takes `maxPrs`):
+
+```
+9719, 9855, 9893, 9974, 10053, 10054, 10093   (10096, 10106, 10112 are not used at maxPrs=7)
+```
+
+The **3rd PR taken is #9893**, so the crash is gated on `record.Number == 9893`.
+
 Rationale:
 
-- Gating on `record.Number == 204` (the 4th of the seven static fixtures 201–207) gives a
+- Gating on `record.Number == 9893` (the 3rd of the seven PRs in the run) gives a
   **deterministic mid-run crash point** with no static counter and no `Interlocked`. The
   activity runs once per genuine (non-replayed) call, so the crash reliably fires after real
   work — regardless of the concurrent fan-out ordering.
-- Because the crash trips **before** `Append`, PR #204 is not recorded on the first run. On
-  resume, #204's already-completed agent (LLM) call replays from durable history (it is not
-  re-invoked) and #204 is recorded exactly once. The finished ledger holds 7 unique lines.
+- Because the crash trips **before** `Append`, PR #9893 is not recorded on the first run. On
+  resume, #9893's already-completed agent (LLM) call replays from durable history (it is not
+  re-invoked) and #9893 is recorded exactly once. The finished ledger holds 7 unique lines.
 - Committed **commented-out**, so the normal (non-durability) runbook flow never crashes.
 
 `RecordAgentCallActivity` otherwise returns to being a pure, single-purpose ledger recorder:
