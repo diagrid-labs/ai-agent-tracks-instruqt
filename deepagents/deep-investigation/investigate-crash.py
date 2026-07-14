@@ -72,10 +72,6 @@ async def main():
     args = parser.parse_args()
     issue_number = args.issue
 
-    # Deterministic instance ID: run 2 finds the same Dapr workflow with no
-    # local state file. Dapr is the single source of truth.
-    workflow_id = f"investigation-{issue_number}"
-
     agent = create_deep_agent(
         model="openai:gpt-4o-mini",
         tools=TOOLS,
@@ -88,6 +84,10 @@ async def main():
         name="issue-investigation",
         max_steps=50,
     )
+
+    # Deterministic instance ID: run 2 finds the same Dapr workflow with no
+    # local state file. Dapr is the single source of truth.
+    workflow_id = f"investigation-{issue_number}"
 
     try:
         runner.start()

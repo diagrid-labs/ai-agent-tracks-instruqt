@@ -47,15 +47,26 @@ def main():
         name="issue-investigator",
     )
 
-    result = agent.invoke({
-        "messages": [{
-            "role": "user",
-            "content": f"Investigate issue #{issue_number} and write the report.",
-        }]
-    })
-
-    for msg in result["messages"]:
-        msg.pretty_print()
+    # Stream instead of invoke so each message prints as the agent produces it,
+    # rather than all at once after the run completes.
+    result = None
+    printed = 0
+    for chunk in agent.stream(
+        {
+            "messages": [{
+                "role": "user",
+                "content": f"Investigate issue #{issue_number} and write the report.",
+            }]
+        },
+        stream_mode="values",
+    ):
+        result = chunk
+        messages = chunk["messages"]
+        # Print only messages we haven't shown yet.
+        for msg in messages[printed:]:
+            msg.pretty_print()
+            sys.stdout.flush()
+        printed = len(messages)
 
     files = result.get("files", {})
     report_name = f"investigation-{issue_number}.md"
