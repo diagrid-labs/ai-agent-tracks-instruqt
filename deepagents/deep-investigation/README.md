@@ -1,17 +1,4 @@
-<!--
-Copyright 2026 The Dapr Authors
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
--->
-
-# deepagents-issue-investigator
+# Deepagents Issue Investigator
 
 A CLI tool that investigates a GitHub issue using [DeepAgents](https://docs.langchain.com/oss/python/deepagents) (plan + tools + virtual filesystem, built on LangGraph) and writes a Markdown investigation report.
 
@@ -23,7 +10,7 @@ Built for the Dapr University "Deep Issue Investigation that Survives the Long H
 |---|---|
 | `investigate-baseline.py` | In-process DeepAgents run, in-memory scratchpad. No Dapr. |
 | `investigate-durable.py` | Same agent, wrapped in `DaprWorkflowDeepAgentRunner` (from `diagrid[deepagents]`). Scratchpad + workflow progress persisted to a Dapr state store. |
-| `investigate-crash.py` | Durable version using `tools_crash.py`, which has a deliberate `os._exit(1)` inside `get_comments` to simulate a mid-investigation crash. Uses `crash_state.json` to persist the workflow ID across restarts. |
+| `investigate-crash.py` | Durable version using `tools_crash.py`, which has a deliberate `os._exit(1)` inside `get_comments` to simulate a mid-investigation crash. Uses a deterministic workflow ID (`investigation-<issue>`) so the restart reconnects to the same Dapr workflow — no local state file. |
 
 `investigate.py` is whichever of the three is currently active (copy the one you want over it, or use the Instruqt challenge setup scripts which do this for you).
 
@@ -71,7 +58,7 @@ cp investigate-crash.py investigate.py
 uv run dapr run --app-id deepagent --resources-path ./resources -- python investigate.py --issue 1833
 ```
 
-The process dies inside `get_comments` (see `tools_crash.py`) after `get_issue` has already completed and been checkpointed. The Dapr workflow ID is saved to `crash_state.json` before the crash.
+The process dies inside `get_comments` (see `tools_crash.py`) after `get_issue` has already completed and been checkpointed. The workflow ID is deterministic — `investigation-<issue>` — so nothing needs to be saved locally; Dapr holds the state under that ID.
 
 Comment out the `os._exit(1)` line in `tools_crash.py`, then run the same command again:
 
@@ -79,12 +66,11 @@ Comment out the `os._exit(1)` line in `tools_crash.py`, then run the same comman
 uv run dapr run --app-id deepagent --resources-path ./resources -- python investigate.py --issue 1833
 ```
 
-On restart, the script detects `crash_state.json` and polls the existing Dapr workflow by its saved ID. The Dapr Workflow engine resumes from the last checkpoint — `get_issue` is not re-executed — and `investigation-1833.md` is produced.
+On restart, the script derives the same workflow ID, asks Dapr for that instance's state, finds it still running, and polls it to completion. The Dapr Workflow engine resumes from the last checkpoint — `get_issue` is not re-executed — and `investigation-1833.md` is produced. (Because the ID is derived from the issue number, re-running a *completed* investigation just rewrites the report from Dapr's stored output rather than starting over; purge the instance or flush Redis to redo it.)
 
-To reset for a fresh demo:
+To reset for a fresh demo (purges all Dapr/Redis state):
 
 ```bash
-rm -f crash_state.json
 docker exec dapr_redis redis-cli flushall
 ```
 

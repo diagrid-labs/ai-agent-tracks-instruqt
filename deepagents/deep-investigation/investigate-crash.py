@@ -1,42 +1,33 @@
-# Copyright 2026 The Dapr Authors
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#     http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Crash-demo: durable version with a deliberate crash inside get_comments
 (tools_crash.py) to simulate an infrastructure failure mid-investigation.
 
+The workflow ID is derived from the issue number (investigation-<issue>), so
+there is NO local state file — Dapr is the single source of truth.
+
 First run: the workflow starts, get_issue completes and checkpoints, then
-get_comments calls os._exit(1) — process dies hard. The workflow_id is
-saved to crash_state.json before the crash.
+get_comments calls os._exit(1) — the process dies hard. Dapr has already
+persisted the workflow state under investigation-<issue>.
 
 Second run (after commenting out the os._exit(1) line in tools_crash.py):
-the script detects crash_state.json, skips starting a new workflow, and
-polls the existing one. Dapr resumes from its last checkpoint — get_issue
-is NOT re-run. The workflow continues, finishes, and the report is written.
+the script derives the same workflow ID, asks Dapr for its state, finds it
+still running, and polls it to completion. Dapr resumes from its last
+checkpoint — get_issue is NOT re-run. The workflow finishes and the report
+is written.
 
 Usage:
     # Run 1 — will crash mid-way:
-    dapr run --app-id deepagent --resources-path ./resources -- python investigate-crash.py <issue-number>
+    dapr run --app-id deepagent --resources-path ./resources -- python investigate-crash.py --issue <issue-number>
 
     # Comment out os._exit(1) in tools_crash.py, then:
     # Run 2 — resumes and completes:
-    dapr run --app-id deepagent --resources-path ./resources -- python investigate-crash.py <issue-number>
+    dapr run --app-id deepagent --resources-path ./resources -- python investigate-crash.py --issue <issue-number>
 
-    # Reset between full demos:
-    rm -f crash_state.json
+    # Reset between full demos (purges all Dapr/Redis state):
+    docker exec dapr_redis redis-cli flushall
 """
 import asyncio
 import json
 import argparse
-import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 from deepagents import create_deep_agent
@@ -70,20 +61,6 @@ You MUST investigate the given issue number by calling tools in EXACTLY this ord
 Use the write_file tool (built into your filesystem) to save the report.
 """
 
-STATE_FILE = Path("crash_state.json")
-
-
-def load_crash_state() -> dict:
-    if STATE_FILE.exists():
-        with open(STATE_FILE) as f:
-            return json.load(f)
-    return {"workflow_scheduled": False, "workflow_id": None, "run_count": 0}
-
-
-def save_crash_state(state: dict):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
-
 
 def log(msg: str):
     print(msg, flush=True)
@@ -95,12 +72,9 @@ async def main():
     args = parser.parse_args()
     issue_number = args.issue
 
-    crash_state = load_crash_state()
-    crash_state["run_count"] += 1
-    log(f"\n{'=' * 50}")
-    log(f"RUN #{crash_state['run_count']}")
-    log(f"workflow_scheduled={crash_state['workflow_scheduled']}  workflow_id={crash_state.get('workflow_id')}")
-    log(f"{'=' * 50}\n")
+    # Deterministic instance ID: run 2 finds the same Dapr workflow with no
+    # local state file. Dapr is the single source of truth.
+    workflow_id = f"investigation-{issue_number}"
 
     agent = create_deep_agent(
         model="openai:gpt-4o-mini",
@@ -118,10 +92,23 @@ async def main():
     try:
         runner.start()
         log("Agent runtime started")
+        # Give the runtime a moment to reconnect to the sidecar and re-dispatch
+        # any in-flight instance's pending work into this process.
         await asyncio.sleep(1)
 
-        if not crash_state["workflow_scheduled"]:
-            log("Starting new workflow...")
+        assert runner._workflow_client is not None, "workflow client not initialized"
+        state = runner._workflow_client.get_workflow_state(instance_id=workflow_id)
+
+        log(f"\n{'=' * 50}")
+        if state is None:
+            log(f"No existing workflow for {workflow_id} — starting fresh")
+        else:
+            log(f"Found existing workflow {workflow_id}: {state.runtime_status}")
+        log(f"{'=' * 50}\n")
+
+        if state is None:
+            # Fresh run: schedule the workflow under the deterministic ID and
+            # stream its progress events.
             async for event in runner.run_async(
                 input={
                     "messages": [{
@@ -129,30 +116,34 @@ async def main():
                         "content": f"Investigate issue #{issue_number} and write the report.",
                     }],
                 },
-                thread_id=f"investigation-{issue_number}",
+                thread_id=workflow_id,
+                workflow_id=workflow_id,
             ):
                 event_type = event["type"]
                 log(f"Event: {event_type}")
                 if event_type == "workflow_started":
-                    wf_id = event.get("workflow_id")
-                    crash_state["workflow_scheduled"] = True
-                    crash_state["workflow_id"] = wf_id
-                    save_crash_state(crash_state)
-                    log(f"Workflow started and saved: {wf_id}")
+                    log(f"Workflow started: {event.get('workflow_id')}")
                 elif event_type == "workflow_status_changed":
                     log(f"Status: {event.get('status')}")
                 elif event_type == "workflow_completed":
                     write_report(issue_number, event.get("output", {}))
-                    STATE_FILE.unlink(missing_ok=True)
                     break
                 elif event_type == "workflow_failed":
                     log(f"Workflow FAILED: {event.get('error')}")
                     break
+        elif state.runtime_status == WorkflowStatus.COMPLETED:
+            # Already finished (e.g. a re-run of a solved issue): rewrite the
+            # report from Dapr's stored output instead of re-investigating.
+            log("Workflow already completed — writing report from stored output")
+            write_report_from_state(state, issue_number)
+        elif state.runtime_status in (WorkflowStatus.FAILED, WorkflowStatus.TERMINATED):
+            log(f"Workflow in terminal state {state.runtime_status}: {state.failure_details}")
         else:
-            saved_id = crash_state["workflow_id"]
-            log(f"Workflow already started. Resuming by polling: {saved_id}")
-            await poll_for_completion(runner, saved_id, issue_number)
-            STATE_FILE.unlink(missing_ok=True)
+            # Still in flight (RUNNING / PENDING) — this is the crash-recovery
+            # path. start() already told Dapr to resume the pending work into
+            # this process; just poll the same instance to completion.
+            log(f"Resuming existing workflow by polling: {workflow_id}")
+            await poll_for_completion(runner, workflow_id, issue_number)
 
     finally:
         runner.shutdown()
@@ -160,38 +151,40 @@ async def main():
 
 
 async def poll_for_completion(runner: DaprWorkflowDeepAgentRunner, workflow_id: str, issue_number: str):
+    assert runner._workflow_client is not None, "workflow client not initialized"
+    client = runner._workflow_client
+
+    try:
+        await asyncio.to_thread(client.wait_for_workflow_start, workflow_id, timeout_in_seconds=60)
+        log("Workflow is running — waiting for it to finish...")
+
+        wf_state = await asyncio.to_thread(
+            client.wait_for_workflow_completion, workflow_id, timeout_in_seconds=300
+        )
+    except TimeoutError:
+        log("Timed out waiting for the workflow to finish — check the Dapr sidecar/state store.")
+        return
+
+    if wf_state is None:
+        log("Workflow state not found in store!")
+    elif wf_state.runtime_status == WorkflowStatus.COMPLETED:
+        write_report_from_state(wf_state, issue_number)
+    elif wf_state.runtime_status == WorkflowStatus.FAILED:
+        log(f"Workflow FAILED: {wf_state.failure_details}")
+    else:
+        log(f"Workflow ended in state: {wf_state.runtime_status}")
+
+
+def write_report_from_state(wf_state, issue_number: str):
     from diagrid.agent.langgraph.models import GraphWorkflowOutput
 
-    assert runner._workflow_client is not None, "workflow client not initialized"
-
-    prev_status = None
-    while True:
-        await asyncio.sleep(1.0)
-        wf_state = runner._workflow_client.get_workflow_state(instance_id=workflow_id)
-
-        if wf_state is None:
-            log("Workflow state not found in store!")
-            break
-
-        if wf_state.runtime_status != prev_status:
-            log(f"Workflow status: {wf_state.runtime_status}")
-            prev_status = wf_state.runtime_status
-
-        if wf_state.runtime_status == WorkflowStatus.COMPLETED:
-            raw = wf_state.serialized_output
-            if raw:
-                d = json.loads(raw) if isinstance(raw, str) else raw
-                output = GraphWorkflowOutput.from_dict(d)
-                write_report(issue_number, output.output)
-            else:
-                log("WARNING: workflow completed but output was empty")
-            break
-        elif wf_state.runtime_status == WorkflowStatus.FAILED:
-            log(f"Workflow FAILED: {wf_state.failure_details}")
-            break
-        elif wf_state.runtime_status == WorkflowStatus.TERMINATED:
-            log("Workflow was TERMINATED")
-            break
+    raw = wf_state.serialized_output
+    if raw:
+        d = json.loads(raw) if isinstance(raw, str) else raw
+        output = GraphWorkflowOutput.from_dict(d)
+        write_report(issue_number, output.output)
+    else:
+        log("WARNING: workflow completed but output was empty")
 
 
 def write_report(issue_number: str, output: dict):
