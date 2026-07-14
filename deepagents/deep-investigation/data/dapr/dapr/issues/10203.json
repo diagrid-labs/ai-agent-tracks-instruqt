@@ -1,0 +1,21 @@
+{
+  "type": "issue",
+  "number": 10203,
+  "title": "CVE-2025-69725 - Requires update to `go-chi`",
+  "state": "open",
+  "body": "See: https://www.cve.org/CVERecord?id=CVE-2025-69725\n\nAffected: `5.2.2`\nFixed: `5.2.4`",
+  "labels": [
+    "kind/bug"
+  ],
+  "user": "atrauzzi",
+  "created_at": "2026-07-14T12:36:40Z",
+  "updated_at": "2026-07-14T12:36:40Z",
+  "comments": [],
+  "linked_pr_numbers": [
+    10205
+  ],
+  "referenced_issue_numbers": [],
+  "html_url": "https://github.com/dapr/dapr/issues/10203",
+  "is_seed": false,
+  "partial": false
+}

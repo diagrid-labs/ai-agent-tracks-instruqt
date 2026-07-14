@@ -1,0 +1,21 @@
+{
+  "type": "issue",
+  "number": 10186,
+  "title": "Make workflow execution latency buckets configurable",
+  "state": "open",
+  "body": "<!-- If you need to report a security issue please visit https://docs.dapr.io/operations/support/support-security-issues -->\n\n## In what area(s)?\n\n/area runtime\n\n## Describe the feature\n\nPresently, all latency metrics collected by dapr runtime use the same bucket definition, which defaults to a range from `1ms` to `100.000 ms`.  The buckets can be configured in the metrics specs but this will affect all latency metrics.\n\nThis range make sense for grpc and http requests, as well as internal operations.  However, workflows can be long running, spanning from seconds to days. \n\nIt would be therefore convenient to allow defining a different bucket values for workflows\n\n## Release Note\n<!-- How should this new feature be announced in our release notes? It can be populated later. -->\n<!-- Keep it as a single line. Examples: -->\n\nRELEASE NOTE: **ADD** Configurable workflow latency bucket. \n<!-- RELEASE NOTE: **FIX** Bug in runtime. -->\n<!-- RELEASE NOTE: **UPDATE** Runtime dependency. -->\n\nRELEASE NOTE:\n",
+  "labels": [
+    "kind/enhancement"
+  ],
+  "user": "pablochacin",
+  "created_at": "2026-07-10T15:36:08Z",
+  "updated_at": "2026-07-10T15:36:08Z",
+  "comments": [],
+  "linked_pr_numbers": [
+    10187
+  ],
+  "referenced_issue_numbers": [],
+  "html_url": "https://github.com/dapr/dapr/issues/10186",
+  "is_seed": false,
+  "partial": false
+}

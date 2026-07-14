@@ -1,0 +1,30 @@
+{
+  "type": "issue",
+  "number": 10185,
+  "title": "Make the timeout for bindings OPTIONS request configurable",
+  "state": "open",
+  "body": "## In what area(s)?\n\n> /area runtime\n\n## What version of Dapr?\n\n`> 1.15.x`\n\nsee: [1.15.x](https://github.com/dapr/dapr/blob/v1.15.0/pkg/runtime/processor/binding/send.go#L89)\nsee: [1.18.x](https://github.com/dapr/dapr/blob/v1.18.1/pkg/runtime/processor/binding/send.go#L106)\n\n## Expected Behavior\n\nThe timeout for binding `OPTIONS` discovery requests to be configurable.\n\n## Actual Behavior\n\nA fixed timeout of three seconds was introduced in the `1.16.x` series.  For applications that have a slower startup time (JIT), this timeout can be exceeded.  Particularly if they are running in resource constrained environments.\n\n## Steps to Reproduce the Problem\n\n - Configure any kind of input binding for an application that has a slow startup ( > 3 seconds )\n - When the application starts up, the Dapr `OPTIONS` probe will time out\n\n## Release Note\n\nRELEASE NOTE: **FIX** Allow binding OPTIONS probe timeout to be configurable.\n\n",
+  "labels": [
+    "kind/bug"
+  ],
+  "user": "atrauzzi",
+  "created_at": "2026-07-10T12:50:32Z",
+  "updated_at": "2026-07-13T03:34:45Z",
+  "comments": [
+    {
+      "user": "Advait2912",
+      "body": "Hello @atrauzzi  I will like to work on this issue, I will investigate where the OPTIONS probe timeout is configured and then plan is to make it configurable while preserving the current default behavior.",
+      "created_at": "2026-07-12T18:05:55Z"
+    },
+    {
+      "user": "Advait2912",
+      "body": "/assign",
+      "created_at": "2026-07-13T03:34:36Z"
+    }
+  ],
+  "linked_pr_numbers": [],
+  "referenced_issue_numbers": [],
+  "html_url": "https://github.com/dapr/dapr/issues/10185",
+  "is_seed": false,
+  "partial": false
+}

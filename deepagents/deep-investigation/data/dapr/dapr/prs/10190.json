@@ -1,0 +1,39 @@
+{
+  "type": "pr",
+  "number": 10190,
+  "title": "fix(runtime): ensure outbound healthz locks on component load failure",
+  "state": "open",
+  "body": "If component loading failed during runtime initialization, the outbound healthcheck (`/healthz/outbound`) did not correctly register or mark the `components` target as unhealthy. This could cause the sidecar to report a healthy state incorrectly or bypass the check.\r\n\r\nThis change:\r\n- Configures `outboundHealthz` instead of the general `healthz` registry for the components target.\r\n- Ensures the `components` target is registered and correctly set to unhealthy on component loading failures.\r\n- Adds `TestInitRuntime_ComponentInitializationFailure_LocksHealth` to verify this behavior.\r\n\r\n# Description\r\n\r\n<!--\r\nPlease explain the changes you've made.\r\n-->\r\n\r\n## Closes #7326\r\n\r\n<!--\r\nWe strive to have all PR being opened based on an issue, where the problem or feature have been discussed prior to implementation.\r\n-->\r\n\r\nPlease reference the issue this PR will close: #_[7362]_\r\n\r\n## Checklist\r\n\r\nPlease make sure you've completed the relevant tasks for this PR, out of the following list:\r\n\r\n- [x] Code compiles correctly\r\n- [x] Created/updated tests\r\n- [x] Unit tests passing\r\n- [ ] End-to-end tests passing\r\n- [ ] Extended the documentation / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Specification has been updated / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Provided sample for the feature / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n",
+  "labels": [],
+  "user": "JoeArias1121",
+  "created_at": "2026-07-12T15:31:23Z",
+  "updated_at": "2026-07-12T16:14:08Z",
+  "additions": 44,
+  "deletions": 0,
+  "changed_files": 2,
+  "linked_issue_numbers": [
+    7326
+  ],
+  "comments": [],
+  "html_url": "https://github.com/dapr/dapr/pull/10190",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "pkg/runtime/runtime.go",
+      "status": "modified",
+      "additions": 6,
+      "deletions": 0,
+      "patch": "@@ -723,6 +723,10 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {\n \t\tlog.Error(err.Error())\n \t}\n \n+\t// Register a health target tracking component initialization status.\n+\t// This forces /healthz to return a failure status until this target is marked Ready.\n+\tcomponentTarget := a.runtimeConfig.outboundHealthz.AddTarget(\"components\")\n+\n \t// Start proxy\n \ta.initProxy()\n \n@@ -742,6 +746,8 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {\n \tif err = a.flushOutstandingComponents(ctx); err != nil {\n \t\treturn err\n \t}\n+\t// Components loaded and flushed successfully; unlock the health target gate.\n+\tcomponentTarget.Ready()\n \n \terr = a.loadHTTPEndpoints(ctx)\n \tif err != nil {",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/runtime_test.go",
+      "status": "modified",
+      "additions": 38,
+      "deletions": 0,
+      "patch": "@@ -2549,3 +2549,41 @@ func TestOtelResourceDetection(t *testing.T) {\n \t\t})\n \t}\n }\n+\n+func TestInitRuntime_ComponentInitializationFailure_LocksHealth(t *testing.T) {\n+\t// Arrange: Create a dedicated health registry instance to inspect\n+\ttestHealthz := healthz.New()\n+\n+\t// Arrange: Intentionally configure the runtime to point to a non-existent directory\n+\ttestConfig := NewTestDaprRuntimeConfig(t, modes.StandaloneMode, string(protocol.HTTPProtocol), 1024)\n+\ttestConfig.outboundHealthz = testHealthz\n+\ttestConfig.standalone = modeconfig.StandaloneConfig{\n+\t\tResourcesPath: []string{filepath.Join(t.TempDir(), \"non-existent\")},\n+\t}\n+\n+\t// Act 1: Construct the runtime (this should succeed without error)\n+\trt, err := newDaprRuntime(t.Context(), testSecurity(t), testConfig,\n+\t\t&config.Configuration{}, &config.AccessControlList{},\n+\t\tresiliency.New(logger.NewLogger(\"test\")), nil, nil)\n+\trequire.NoError(t, err)\n+\n+\t// Act 2: Run the runtime with a short timeout to trigger initialization and check the error.\n+\t// Since component loading fails, this will fail fast and return the error.\n+\trunCtx, cancel := context.WithTimeout(t.Context(), 1*time.Second)\n+\tdefer cancel()\n+\n+\trunErr := rt.Run(runCtx)\n+\n+\t// Assert: The initialization sequence should report a loading failure error\n+\trequire.Error(t, runErr)\n+\tassert.Contains(t, runErr.Error(), \"failed to load components\")\n+\n+\t// Assert: Verify our architectural gatekeeper successfully blocked the probe.\n+\t// Since components failed, the \"components\" target must exist but NOT be ready.\n+\tassert.Contains(\n+\t\tt,\n+\t\ttestHealthz.GetUnhealthyTargets(),\n+\t\t\"components\",\n+\t\t\"Health probe must lock 'components' to unhealthy if components fail to load\",\n+\t)\n+}",
+      "patch_truncated": false
+    }
+  ]
+}

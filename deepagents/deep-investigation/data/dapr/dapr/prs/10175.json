@@ -1,0 +1,61 @@
+{
+  "type": "pr",
+  "number": 10175,
+  "title": "feat: add more descriptive logging for component startup failures",
+  "state": "open",
+  "body": "## Summary\n\nAddresses #8236\n\nImproves component startup logging to help operators diagnose initialization issues:\n\n1. **Add 'Initializing component' log message**: Added at the start of component init in the root loop handler, giving operators visibility into when a component begins initialization.\n\n2. **Include timeout value in error messages**: The timeout error message now includes the configured timeout value (e.g., 'init timeout for component X after 5s'), helping operators understand if they need to adjust timeouts.\n\n3. **Fix misleading error message in state sub-processor**: The state sub-processor had a copy-paste error from the lock sub-processor, incorrectly saying 'failed to save lock keyprefix' instead of 'failed to save state configuration'.\n\n4. **Include component name in error messages**: Error messages in lock and state sub-processors now include the component name for easier identification.\n\nThese changes make it significantly easier to track component lifecycle and diagnose initialization failures in production environments.",
+  "labels": [],
+  "user": "magic-peach",
+  "created_at": "2026-07-10T06:03:38Z",
+  "updated_at": "2026-07-10T16:05:59Z",
+  "additions": 5,
+  "deletions": 3,
+  "changed_files": 4,
+  "linked_issue_numbers": [
+    8236
+  ],
+  "comments": [
+    {
+      "user": "mikeee",
+      "body": "```suggestion\n```\n\nThis will be a duplicate logging line: - https://github.com/dapr/dapr/blob/e575df7b19234e7094c3aeb3875d26a155eaf428/pkg/runtime/processor/loops/root/component.go#L97",
+      "created_at": "2026-07-10T16:04:48Z"
+    }
+  ],
+  "html_url": "https://github.com/dapr/dapr/pull/10175",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "pkg/runtime/processor/lock/lock.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -82,7 +82,7 @@ func (l *lock) Init(ctx context.Context, comp compapi.Component) error {\n \tif err != nil {\n \t\tdiag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, \"init\", comp.Name)\n \n-\t\twrapError := fmt.Errorf(\"failed to save lock keyprefix: %s\", err)\n+\t\twrapError := fmt.Errorf(\"failed to save lock keyprefix for component %s: %s\", comp.Name, err)\n \n \t\treturn rterrors.NewInit(rterrors.InitComponentFailure, fName, wrapError)\n \t}",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/processor/loops/instance/instance.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -133,7 +133,7 @@ func (i *Instance) handleInit(ctx context.Context, ev *loops.Init) {\n \t// error, matching the legacy synchronous Init and the inline path. Checked\n \t// against the init context the manager actually used.\n \tif errors.Is(initCtx.Err(), context.DeadlineExceeded) && initerr == nil {\n-\t\tiniterr = fmt.Errorf(\"init timeout for component %s\", comp.LogName())\n+\t\tiniterr = fmt.Errorf(\"init timeout for component %s after %s\", comp.LogName(), ev.Timeout)\n \t}\n \tif initerr == nil {\n \t\ti.lastComp = &comp",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/processor/loops/root/component.go",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "patch": "@@ -32,6 +32,8 @@ const DefaultComponentInitTimeout = time.Second * 5\n func (r *Root) handleInit(ctx context.Context, ev *loops.Init) {\n \tcomp := ev.Component\n \n+\tlog.Infof(\"Initializing component: %s\", comp.LogName())\n+\n \t// Preprocess: resolve secret refs on the component, detect unresolved\n \t// secret-store dependencies.\n \t_, unreadyStore := r.secret.ProcessResource(ctx, &comp)",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/processor/state/state.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -146,7 +146,7 @@ func (s *state) Init(ctx context.Context, comp compapi.Component) error {\n \tif err != nil {\n \t\tdiag.DefaultMonitoring.ComponentInitFailed(comp.Spec.Type, \"init\", comp.Name)\n \n-\t\twrapError := fmt.Errorf(\"failed to save lock keyprefix: %s\", err.Error())\n+\t\twrapError := fmt.Errorf(\"failed to save state configuration for component %s: %s\", comp.Name, err.Error())\n \n \t\treturn rterrors.NewInit(rterrors.InitComponentFailure, fName, wrapError)\n \t}",
+      "patch_truncated": false
+    }
+  ]
+}

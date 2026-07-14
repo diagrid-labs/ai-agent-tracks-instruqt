@@ -1,0 +1,37 @@
+{
+  "type": "pr",
+  "number": 10198,
+  "title": "fix(release): only tag the highest semver release as `latest`",
+  "state": "open",
+  "body": "Motivation:\nThe `latest` and `latest-mariner` Docker tags (on Docker Hub and GitHub\nPackages) are meant to point to the newest release by semantic version, but\nthey were being applied to whichever release was published most recently in\nchronological order. `.github/scripts/get_release_version.py` set\n`LATEST_RELEASE=true` whenever a release-notes file existed for the tag being\nbuilt, with no version comparison. As a result, a hotfix to an older release\nbranch (for example publishing 1.9.6 after 1.10.0) would overwrite the\n`latest` tag and point users at an older release.\n\nApproach:\nBefore writing `LATEST_RELEASE=true`, verify the version being built is the\nhighest one across all `docs/release_notes/v*.md` files. Two small stdlib-only\nhelpers are added: `parseVersion` (parses a final `major.minor.patch` version\nto an int tuple, returning None for pre-releases so rc/alpha notes are\nignored) and `isLatestRelease` (returns true only when no existing release\nnote has a strictly greater version). Integer-tuple comparison also fixes the\nrelated `1.10 < 1.9` string-ordering trap. No new dependencies are introduced\n(the `packaging` library is intentionally avoided as it is not installed\nbefore this step runs), keeping the change fork-safe.\n\nValidation:\nRan the script from the repo root across scenarios:\n  GITHUB_REF=refs/tags/v1.18.2  -> LATEST_RELEASE=true  (highest release)\n  GITHUB_REF=refs/tags/v1.9.5   -> LATEST_RELEASE unset  (old-branch hotfix)\n  GITHUB_REF=refs/tags/v1.19.0-rc.1 -> rc path unchanged, no LATEST_RELEASE\n  missing notes file            -> exits 1 (behavior unchanged)\nAlso exercised the helpers directly (parseVersion/isLatestRelease) against the\nreal `docs/release_notes/` directory and a simulated \"1.9.6 after 1.10.0\"\ndirectory; all assertions passed and `python3 -m py_compile` succeeds.\n\nRELEASE NOTE: **FIX** `latest` Docker tag no longer regresses to an older release when a hotfix is published on an older branch.\n\nFixes #5625\n\nSigned-off-by: Pujitha Paladugu <10557236+pujitha24@users.noreply.github.com>\n",
+  "labels": [],
+  "user": "pujitha24",
+  "created_at": "2026-07-13T18:00:45Z",
+  "updated_at": "2026-07-14T11:01:29Z",
+  "additions": 36,
+  "deletions": 2,
+  "changed_files": 1,
+  "linked_issue_numbers": [
+    5625
+  ],
+  "comments": [
+    {
+      "user": "Copilot",
+      "body": "`LATEST_RELEASE` is used by the release workflow for more than just the Docker `latest` tag (e.g., selecting the GitHub release body in `.github/workflows/dapr.yml:538-542` and gating Helm chart packaging in `.github/workflows/dapr.yml:715-723`). With the new logic, a final but non-highest hotfix release (e.g., v1.9.6 after v1.10.0) will no longer set `LATEST_RELEASE=true`, which can cause those steps to treat the release like an RC and/or skip publishing artifacts.\n\nConsider keeping `LATEST_RELEASE=true` to mean \u201cfinal (non-rc/alpha) release\u201d, and introducing a separate env var (e.g., `HIGHEST_SEMVER_RELEASE`/`TAG_LATEST`) that is set only when the version is the highest semver; then update the Docker tagging logic to use the new var.",
+      "created_at": "2026-07-14T11:01:28Z"
+    }
+  ],
+  "html_url": "https://github.com/dapr/dapr/pull/10198",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": ".github/scripts/get_release_version.py",
+      "status": "modified",
+      "additions": 36,
+      "deletions": 2,
+      "patch": "@@ -16,12 +16,41 @@\n # LATEST_RELEASE to true to add 'latest' tag to docker image.\n \n import os\n+import re\n import sys\n+import glob\n import datetime\n \n gitRef = os.getenv(\"GITHUB_REF\")\n tagRefPrefix = \"refs/tags/v\"\n \n+\n+# parseVersion returns a (major, minor, patch) tuple of ints for a final\n+# release version such as \"1.9.5\". It returns None for pre-release versions\n+# (e.g. \"1.0.0-rc.1\") or anything it cannot parse, so that only final releases\n+# are considered when determining the 'latest' tag.\n+def parseVersion(version):\n+    match = re.fullmatch(r\"(\\d+)\\.(\\d+)\\.(\\d+)\", version)\n+    if match is None:\n+        return None\n+    return tuple(int(part) for part in match.groups())\n+\n+\n+# isLatestRelease returns True only if the given final release version is the\n+# highest one across all release notes in releaseNotesDir. This prevents a\n+# hotfix to an older release branch (e.g. 1.9.6 published after 1.10.0) from\n+# being tagged as 'latest' just because it is the most recent chronologically.\n+def isLatestRelease(version, releaseNotesDir):\n+    current = parseVersion(version)\n+    if current is None:\n+        return False\n+    for notePath in glob.glob(os.path.join(releaseNotesDir, \"v*.md\")):\n+        # Strip the leading 'v' and trailing '.md' from the file name.\n+        other = parseVersion(os.path.basename(notePath)[1:-3])\n+        if other is not None and other > current:\n+            return False\n+    return True\n+\n with open(os.getenv(\"GITHUB_ENV\"), \"a\") as githubEnv:\n \n     if \"schedule\" in sys.argv:\n@@ -47,8 +76,13 @@\n         print (\"Checking if {} exists\".format(releaseNotePath))\n         if os.path.exists(releaseNotePath):\n             print (\"Found {}\".format(releaseNotePath))\n-            # Set LATEST_RELEASE to true\n-            githubEnv.write(\"LATEST_RELEASE=true\\n\")\n+            # Only tag as 'latest' if this is the highest release version, so\n+            # that hotfixes to older branches do not overwrite the 'latest' tag.\n+            if isLatestRelease(releaseVersion, os.path.dirname(releaseNotePath)):\n+                print (\"{} is the latest release; setting LATEST_RELEASE=true\".format(releaseVersion))\n+                githubEnv.write(\"LATEST_RELEASE=true\\n\")\n+            else:\n+                print (\"{} is not the latest release; skipping 'latest' tag\".format(releaseVersion))\n         else:\n             print (\"{} is not found\".format(releaseNotePath))\n             sys.exit(1)",
+      "patch_truncated": false
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "type": "issue",
+  "number": 10173,
+  "title": "Cluster domain auto-detection returns the wrong domain for namespaces sorting before \"cluster\"",
+  "state": "open",
+  "body": "## Expected Behavior\n\nWhen `KubeClusterDomain` is not set explicitly, the injector auto-detects it\nfrom `/etc/resolv.conf`. It should detect the actual cluster domain (e.g.\n`cluster.local`) regardless of the pod's namespace.\n\n## Actual Behavior\n\n`utils.getClusterDomain` selects the cluster domain by sorting the resolv.conf\n`search` domains alphabetically and taking the first one:\n\n```go\nsearchDomains := getResolvSearchDomains(resolvConf)\nsort.Strings(searchDomains)\n... kubeClusterDomain = searchDomains[0]\n```\n\nIn a Kubernetes pod the search list is\n`<namespace>.svc.<cluster-domain> svc.<cluster-domain> <cluster-domain>`.\nAlphabetical sorting only yields the cluster domain when the namespace sorts\nafter `cluster`. For a namespace such as `app`, the search list is:\n\n```\nsearch app.svc.cluster.local svc.cluster.local cluster.local\n```\n\nand detection returns `app.svc.cluster.local` instead of `cluster.local`.\n\nThis feeds `pkg/injector/service/config.go` (`GetKubeClusterDomain()`), so\nsidecars injected in affected namespaces can be configured with the wrong\ncluster domain.\n\n## Steps to Reproduce the Problem\n\nCall `getClusterDomain` with a resolv.conf whose namespace sorts before\n`cluster`:\n\n```\nsearch app.svc.cluster.local svc.cluster.local cluster.local\n```\n\nObserved result: `app.svc.cluster.local`. Expected: `cluster.local`.\n\n## Release Note\n\nRELEASE NOTE: **FIX** Cluster domain auto-detection for namespaces that sort alphabetically before \"cluster\".\n",
+  "labels": [],
+  "user": "magic-peach",
+  "created_at": "2026-07-09T17:26:52Z",
+  "updated_at": "2026-07-10T04:03:52Z",
+  "comments": [
+    {
+      "user": "magic-peach",
+      "body": "Thanks for the detailed suggestion \u2014 that's more robust than my initial length-based heuristic, so I've updated the PR to use it.\n\nDetection now finds the search entry that begins with the `svc.` label and strips it, e.g. `svc.cluster.local` \u2192 `cluster.local`. The namespace-qualified entry (`<namespace>.svc.<cluster-domain>`) does not start with `svc.`, so it isn't matched. This preserves the resolver's search order, doesn't assume a fixed number of namespace labels, and returns the default cluster domain explicitly when no `svc.`-shaped entry exists.\n\nTable tests were expanded accordingly: namespaces `app` and `zoo` (either side of \"cluster\"), multi-label namespaces, a custom multi-label cluster domain (`svc.k8s.corp.example` \u2192 `k8s.corp.example`), trailing dots on the search entries, unrelated search entries mixed in, and the no-match fallback.\n",
+      "created_at": "2026-07-10T04:03:52Z"
+    }
+  ],
+  "linked_pr_numbers": [
+    10174
+  ],
+  "referenced_issue_numbers": [],
+  "html_url": "https://github.com/dapr/dapr/issues/10173",
+  "is_seed": false,
+  "partial": false
+}

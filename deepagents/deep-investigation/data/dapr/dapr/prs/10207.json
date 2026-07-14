@@ -1,0 +1,39 @@
+{
+  "type": "pr",
+  "number": 10207,
+  "title": "fix: bump components-contrib to v1.18.3 for CVE-2026-2303",
+  "state": "open",
+  "body": "## Description\n\nMaster counterpart of the 1.18.2 CVE backport (#10205), so the fixes Fico requested also land on `master`.\n\nThe daprd binary on `master` already links the patched direct dependencies via #10188:\n- `github.com/go-chi/chi/v5` v5.2.4 (CVE-2025-69725)\n- `go.mongodb.org/mongo-driver` v1.17.7 (CVE-2026-2303)\n\nThis PR bumps `github.com/dapr/components-contrib` from v1.18.1 to v1.18.3, which carries the mongo-driver v1.17.7 fix (CVE-2026-2303) on the component side. `master` currently pins the 1.18 release line for components-contrib (v1.18.1), so this advances it to v1.18.3.\n\n## Related\n\n- Runtime CVE bumps already on master: #10188\n- 1.18.2 backport: #10205\n- components-contrib: #4453 (main), #4454 (release-1.18)\n\n## Testing\n\n- `go build ./...` \u2014 passes\n- `go mod tidy` / `make modtidy-all` clean; `go.sum` consistent\n",
+  "labels": [],
+  "user": "nelson-parente",
+  "created_at": "2026-07-14T17:57:31Z",
+  "updated_at": "2026-07-14T17:57:32Z",
+  "additions": 3,
+  "deletions": 3,
+  "changed_files": 2,
+  "linked_issue_numbers": [
+    4454
+  ],
+  "comments": [],
+  "html_url": "https://github.com/dapr/dapr/pull/10207",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "go.mod",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -11,7 +11,7 @@ require (\n \tgithub.com/cenkalti/backoff/v4 v4.3.0\n \tgithub.com/cloudevents/sdk-go/v2 v2.15.2\n \tgithub.com/coreos/go-oidc/v3 v3.17.0\n-\tgithub.com/dapr/components-contrib v1.18.1\n+\tgithub.com/dapr/components-contrib v1.18.3\n \tgithub.com/dapr/durabletask-go v0.12.2-0.20260630111707-26034a1c0eef\n \tgithub.com/dapr/kit v0.18.2\n \tgithub.com/diagridio/go-etcd-cron v0.12.6",
+      "patch_truncated": false
+    },
+    {
+      "filename": "go.sum",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -507,8 +507,8 @@ github.com/cyphar/filepath-securejoin v0.6.1 h1:5CeZ1jPXEiYt3+Z6zqprSAgSWiggmpVy\n github.com/cyphar/filepath-securejoin v0.6.1/go.mod h1:A8hd4EnAeyujCJRrICiOWqjS1AX0a9kM5XL+NwKoYSc=\n github.com/dancannon/gorethink v4.0.0+incompatible h1:KFV7Gha3AuqT+gr0B/eKvGhbjmUv0qGF43aKCIKVE9A=\n github.com/dancannon/gorethink v4.0.0+incompatible/go.mod h1:BLvkat9KmZc1efyYwhz3WnybhRZtgF1K929FD8z1avU=\n-github.com/dapr/components-contrib v1.18.1 h1:GgPuh60eBkVltg0Q+rsstHyzHvmk7XxUC/NgEoFh3Vw=\n-github.com/dapr/components-contrib v1.18.1/go.mod h1:QRNh9OQcdDN2hzDNzlImLI4pnWfqTIIg1vX9yRsLHV8=\n+github.com/dapr/components-contrib v1.18.3 h1:eLtaIAZvMsN8JfM61+QVECnQsxv/46JfxWTM40S7uJ4=\n+github.com/dapr/components-contrib v1.18.3/go.mod h1:4MZlbYqyytdQIol9VF59uzhX4NJsa0xZlgr2faQq59o=\n github.com/dapr/components-contrib/tests/certification v0.0.0-20260219105038-d0cf89ba8acf h1:vRT6BytcXSseSg+VZthVm93niltGVOFbhLeRXbwyWKI=\n github.com/dapr/components-contrib/tests/certification v0.0.0-20260219105038-d0cf89ba8acf/go.mod h1:NawmfMN065wKn8Jk39E1iwwgWe3kti/MfHBy1jQmSZs=\n github.com/dapr/durabletask-go v0.12.2-0.20260630111707-26034a1c0eef h1:a1SNnZiFlD+RXfo8s2L6b/W+UIVxnmKx/nI8jtwPiYA=",
+      "patch_truncated": false
+    }
+  ]
+}

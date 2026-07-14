@@ -1,0 +1,49 @@
+{
+  "type": "pr",
+  "number": 8997,
+  "title": "Enhance logging for component startup failures",
+  "state": "closed",
+  "body": "# Description\r\n\r\nThis PR enhances the logging for component startup failures.  \r\nPreviously, failure logs were generic and did not provide enough context to help diagnose issues.  \r\nNow, the logs include:\r\n- Component type\r\n- Component name\r\n- The specific error message\r\n- Startup phase (where applicable)\r\n\r\nThis makes it easier for developers and operators to identify why a component failed to initialize.\r\n\r\n## Issue reference\r\n\r\nPlease reference the issue this PR will close: #8236\r\n\r\n## Checklist\r\n\r\nPlease make sure you've completed the relevant tasks for this PR, out of the following list:\r\n\r\n- [x] Code compiles correctly\r\n- [x] Created/updated tests (added unit test to simulate a component startup failure and check log output)\r\n- [x] Unit tests passing\r\n- [ ] End-to-end tests passing\r\n- [ ] Extended the documentation / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_ (not required since this is internal logging improvement)\r\n- [ ] Specification has been updated / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_ (not applicable)\r\n- [ ] Provided sample for the feature / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_ (not applicable)",
+  "labels": [
+    "stale"
+  ],
+  "user": "AdarshRavichandran",
+  "created_at": "2025-08-19T16:20:07Z",
+  "updated_at": "2025-12-06T04:47:57Z",
+  "additions": 62,
+  "deletions": 2,
+  "changed_files": 3,
+  "linked_issue_numbers": [
+    8236
+  ],
+  "comments": [],
+  "html_url": "https://github.com/dapr/dapr/pull/8997",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "pkg/runtime/processor/components.go",
+      "status": "modified",
+      "additions": 9,
+      "deletions": 1,
+      "patch": "@@ -166,7 +166,15 @@ func (p *Processor) processComponents(ctx context.Context) error {\n \n \t\terr := p.processComponentAndDependents(ctx, comp)\n \t\tif err != nil {\n-\t\t\terr = fmt.Errorf(\"process component %s error: %s\", comp.Name, err)\n+\t\t\t// Check if this is already an InitError which contains component information\n+\t\t\tvar initErr *rterrors.InitError\n+\t\t\tif errors.As(err, &initErr) {\n+\t\t\t\t// InitError already contains component information, don't duplicate it\n+\t\t\t\terr = fmt.Errorf(\"failed to load component: %w\", err)\n+\t\t\t} else {\n+\t\t\t\t// For other types of errors, include the component name\n+\t\t\t\terr = fmt.Errorf(\"failed to load component %s: %w\", comp.Name, err)\n+\t\t\t}\n \t\t\tif !comp.Spec.IgnoreErrors {\n \t\t\t\tlog.Warnf(\"Error processing component, daprd will exit gracefully: %s\", err)\n \t\t\t\treturn err",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/processor/processor_test.go",
+      "status": "modified",
+      "additions": 52,
+      "deletions": 0,
+      "patch": "@@ -1,3 +1,6 @@\n+//go:build unit\n+// +build unit\n+\n /*\n Copyright 2023 The Dapr Authors\n Licensed under the Apache License, Version 2.0 (the \"License\");\n@@ -719,3 +722,52 @@ func TestProcessorWaitGroupError(t *testing.T) {\n \n \twg.Wait()\n }\n+\n+func TestProcessComponentErrorMessage(t *testing.T) {\n+\tt.Run(\"component init error includes component name\", func(t *testing.T) {\n+\t\tproc, _ := newTestProc()\n+\n+\t\t// Create a component that will fail to initialize\n+\t\tfailingComponent := componentsapi.Component{\n+\t\t\tObjectMeta: metav1.ObjectMeta{\n+\t\t\t\tName: \"failing-component\",\n+\t\t\t},\n+\t\t\tSpec: componentsapi.ComponentSpec{\n+\t\t\t\tType:    \"secretstores.nonexistent\", // This type doesn't exist\n+\t\t\t\tVersion: \"v1\",\n+\t\t\t},\n+\t\t}\n+\n+\t\terr := proc.processComponentAndDependents(t.Context(), failingComponent)\n+\t\trequire.Error(t, err)\n+\n+\t\t// The error should include the component name\n+\t\tassert.Contains(t, err.Error(), \"failing-component\")\n+\t\t// Check for the actual error message about couldn't find secret store\n+\t\tassert.Contains(t, err.Error(), \"couldn't find secret store\")\n+\t})\n+\n+\tt.Run(\"process function wraps error with component info\", func(t *testing.T) {\n+\t\tproc, _ := newTestProc()\n+\n+\t\t// Create a failing component\n+\t\tfailingComponent := componentsapi.Component{\n+\t\t\tObjectMeta: metav1.ObjectMeta{\n+\t\t\t\tName: \"test-secret-store\",\n+\t\t\t},\n+\t\t\tSpec: componentsapi.ComponentSpec{\n+\t\t\t\tType:    \"secretstores.nonexistent\",\n+\t\t\t\tVersion: \"v1\",\n+\t\t\t},\n+\t\t}\n+\n+\t\t// Test the direct error message without using the queue\n+\t\terr := proc.processComponentAndDependents(t.Context(), failingComponent)\n+\t\trequire.Error(t, err)\n+\n+\t\t// The error should include the component name\n+\t\terrorText := err.Error()\n+\t\tassert.Contains(t, errorText, \"test-secret-store\")\n+\t\tassert.Contains(t, errorText, \"couldn't find secret store\")\n+\t})\n+}",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/runtime.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -602,7 +602,7 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {\n \ta.appendBuiltinSecretStore(ctx)\n \terr = a.loadComponents(ctx)\n \tif err != nil {\n-\t\treturn fmt.Errorf(\"failed to load components: %s\", err)\n+\t\treturn fmt.Errorf(\"failed to load components: %w\", err)\n \t}\n \n \ta.flushOutstandingComponents(ctx)",
+      "patch_truncated": false
+    }
+  ]
+}

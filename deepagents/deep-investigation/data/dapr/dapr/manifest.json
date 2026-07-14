@@ -2,7 +2,7 @@
   "schema_version": 1,
   "owner": "dapr",
   "repo": "dapr",
-  "collected_at": "2026-06-30T18:40:08Z",
+  "collected_at": "2026-07-14T18:23:46Z",
   "source": "github-rest-api",
   "params": {
     "issues_state": "open",
@@ -16,10 +16,12 @@
     "neighborhood_depth": 2
   },
   "seed_issues": [
-    1833
+    7326,
+    8236,
+    9056
   ],
   "counts": {
-    "issues": 10,
-    "prs": 6
+    "issues": 8,
+    "prs": 12
   }
 }

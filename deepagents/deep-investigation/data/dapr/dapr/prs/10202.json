@@ -1,0 +1,72 @@
+{
+  "type": "pr",
+  "number": 10202,
+  "title": "feat: skip starting a workflow when the instance already exists",
+  "state": "open",
+  "body": "# Description\r\n\r\nIf the instance already exists no matter the state the action just returns without throwing an error\r\n\r\n## Issue reference\r\n\r\n<!--\r\nWe strive to have all PR being opened based on an issue, where the problem or feature have been discussed prior to implementation.\r\n-->\r\n\r\nPlease reference the issue this PR will close: #_[issue number]_\r\n\r\n## Checklist\r\n\r\nPlease make sure you've completed the relevant tasks for this PR, out of the following list:\r\n\r\n- [ ] Code compiles correctly\r\n- [ ] Created/updated tests\r\n- [ ] Unit tests passing\r\n- [ ] End-to-end tests passing\r\n- [ ] Extended the documentation / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Specification has been updated / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Provided sample for the feature / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n",
+  "labels": [],
+  "user": "javier-aliaga",
+  "created_at": "2026-07-14T10:34:51Z",
+  "updated_at": "2026-07-14T10:38:40Z",
+  "additions": 110,
+  "deletions": 7,
+  "changed_files": 5,
+  "linked_issue_numbers": [],
+  "comments": [
+    {
+      "user": "Copilot",
+      "body": "go.mod includes an active `replace github.com/dapr/durabletask-go => ../durabletask-go`, which will break CI and anyone building from the repo because the relative path won\u2019t exist outside the author\u2019s machine. The repo already has a commented-out replace block for local development only (and `.github/scripts/check_go_mod.mjs` explicitly says not to commit it uncommented).",
+      "created_at": "2026-07-14T10:38:39Z"
+    },
+    {
+      "user": "Copilot",
+      "body": "CreateWorkflowInstance now assumes `createReq` and its `StartEvent` are non-nil (`createReq.GetStartEvent().GetExecutionStarted()`), which can panic if a malformed/nil request reaches this backend. It should defensively validate the request and return a clear error instead of risking a nil dereference.",
+      "created_at": "2026-07-14T10:38:40Z"
+    }
+  ],
+  "html_url": "https://github.com/dapr/dapr/pull/10202",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "go.mod",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "patch": "@@ -532,3 +532,5 @@ replace (\n //\n // Then, run `make modtidy-all` in this repository.\n // This ensures that go.mod and go.sum are up-to-date for each go.mod file.\n+\n+replace github.com/dapr/durabletask-go => ../durabletask-go",
+      "patch_truncated": false
+    },
+    {
+      "filename": "go.sum",
+      "status": "modified",
+      "additions": 0,
+      "deletions": 2,
+      "patch": "@@ -511,8 +511,6 @@ github.com/dapr/components-contrib v1.18.1 h1:GgPuh60eBkVltg0Q+rsstHyzHvmk7XxUC/\n github.com/dapr/components-contrib v1.18.1/go.mod h1:QRNh9OQcdDN2hzDNzlImLI4pnWfqTIIg1vX9yRsLHV8=\n github.com/dapr/components-contrib/tests/certification v0.0.0-20260219105038-d0cf89ba8acf h1:vRT6BytcXSseSg+VZthVm93niltGVOFbhLeRXbwyWKI=\n github.com/dapr/components-contrib/tests/certification v0.0.0-20260219105038-d0cf89ba8acf/go.mod h1:NawmfMN065wKn8Jk39E1iwwgWe3kti/MfHBy1jQmSZs=\n-github.com/dapr/durabletask-go v0.12.2-0.20260630111707-26034a1c0eef h1:a1SNnZiFlD+RXfo8s2L6b/W+UIVxnmKx/nI8jtwPiYA=\n-github.com/dapr/durabletask-go v0.12.2-0.20260630111707-26034a1c0eef/go.mod h1:+8ABEQn9JvRPRvPr1QNVxdkdLPgJgpJwcpie5ZDt7nk=\n github.com/dapr/kit v0.18.2 h1:nOhtpNz5U171Pl8R1hf+KKDNmkNkMUVYcb1x1mWIL1Q=\n github.com/dapr/kit v0.18.2/go.mod h1:2v02LZdXzPmOadxoT6EMEt0bsEYe6h1fn2ndYWmylCg=\n github.com/dave/jennifer v1.4.0/go.mod h1:fIb+770HOpJ2fmN9EPPKOqm1vMGhB+TwXKMZhrIygKg=",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/actors/targets/workflow/orchestrator/create.go",
+      "status": "modified",
+      "additions": 7,
+      "deletions": 0,
+      "patch": "@@ -83,6 +83,13 @@ func (o *orchestrator) createWorkflowInstance(ctx context.Context, request []byt\n \t\treturn o.scheduleWorkflowStart(ctx, startEvent, state)\n \t}\n \n+\t// orchestration already existed: the caller opted into idempotent creation,\n+\t// so leave the existing instance untouched regardless of its runtime status\n+\tif createWorkflowInstanceRequest.GetScheduleIfNotExists() {\n+\t\tlog.Debugf(\"Workflow actor '%s': workflow instance already exists, ignoring create request with scheduleIfNotExists\", o.actorID)\n+\t\treturn nil\n+\t}\n+\n \t// orchestration already existed: create instance only if previous one is completed\n \treturn o.createIfCompleted(ctx, o.rstate, state, startEvent, propagatedHistory)\n }",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/wfengine/backends/actors/actors.go",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 5,
+      "patch": "@@ -332,20 +332,18 @@ func (abe *Actors) RerunWorkflowFromEvent(ctx context.Context, req *backend.Reru\n // Internally, creating a workflow instance also creates a new actor with the same ID. The create\n // request is saved into the actor's \"inbox\" and then executed via a reminder thread. If the app is\n // scaled out across multiple replicas, the actor might get assigned to a replicas other than this one.\n-func (abe *Actors) CreateWorkflowInstance(ctx context.Context, e *backend.HistoryEvent) error {\n+func (abe *Actors) CreateWorkflowInstance(ctx context.Context, createReq *backend.CreateWorkflowInstanceRequest) error {\n \tvar workflowInstanceID string\n \n-\tif es := e.GetExecutionStarted(); es == nil {\n+\tif es := createReq.GetStartEvent().GetExecutionStarted(); es == nil {\n \t\treturn errors.New(\"the history event must be an ExecutionStartedEvent\")\n \t} else if oi := es.GetWorkflowInstance(); oi == nil {\n \t\treturn errors.New(\"the ExecutionStartedEvent did not contain orchestration instance information\")\n \t} else {\n \t\tworkflowInstanceID = oi.GetInstanceId()\n \t}\n \n-\trequestBytes, err := proto.Marshal(&backend.CreateWorkflowInstanceRequest{\n-\t\tStartEvent: e,\n-\t})\n+\trequestBytes, err := proto.Marshal(createReq)\n \tif err != nil {\n \t\treturn fmt.Errorf(\"failed to marshal CreateWorkflowInstanceRequest: %w\", err)\n \t}",
+      "patch_truncated": false
+    },
+    {
+      "filename": "tests/integration/suite/daprd/workflow/scheduleifnotexists.go",
+      "status": "added",
+      "additions": 98,
+      "deletions": 0,
+      "patch": "@@ -0,0 +1,98 @@\n+/*\n+Copyright 2026 The Dapr Authors\n+Licensed under the Apache License, Version 2.0 (the \"License\");\n+you may not use this file except in compliance with the License.\n+You may obtain a copy of the License at\n+    http://www.apache.org/licenses/LICENSE-2.0\n+Unless required by applicable law or agreed to in writing, software\n+distributed under the License is distributed on an \"AS IS\" BASIS,\n+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n+See the License for the specific language governing permissions and\n+limitations under the License.\n+*/\n+\n+package workflow\n+\n+import (\n+\t\"context\"\n+\t\"testing\"\n+\t\"time\"\n+\n+\t\"github.com/stretchr/testify/assert\"\n+\t\"github.com/stretchr/testify/require\"\n+\n+\t\"github.com/dapr/dapr/tests/integration/framework\"\n+\t\"github.com/dapr/dapr/tests/integration/framework/process/workflow\"\n+\t\"github.com/dapr/dapr/tests/integration/suite\"\n+\t\"github.com/dapr/durabletask-go/api\"\n+\t\"github.com/dapr/durabletask-go/api/protos\"\n+\t\"github.com/dapr/durabletask-go/task\"\n+)\n+\n+func init() {\n+\tsuite.Register(new(scheduleifnotexists))\n+}\n+\n+type scheduleifnotexists struct {\n+\tworkflow *workflow.Workflow\n+}\n+\n+func (s *scheduleifnotexists) Setup(t *testing.T) []framework.Option {\n+\ts.workflow = workflow.New(t)\n+\n+\treturn []framework.Option{\n+\t\tframework.WithProcesses(s.workflow),\n+\t}\n+}\n+\n+func (s *scheduleifnotexists) Run(t *testing.T, ctx context.Context) {\n+\ts.workflow.WaitUntilRunning(t, ctx)\n+\n+\ts.workflow.Registry().AddWorkflowN(\"ifnotexists\", func(ctx *task.WorkflowContext) (any, error) {\n+\t\tvar input string\n+\t\tif err := ctx.GetInput(&input); err != nil {\n+\t\t\treturn nil, err\n+\t\t}\n+\t\tif err := ctx.WaitForSingleEvent(\"continue\", time.Minute).Await(nil); err != nil {\n+\t\t\treturn nil, err\n+\t\t}\n+\t\treturn input, nil\n+\t})\n+\n+\tclient := s.workflow.BackendClient(t, ctx)\n+\n+\tid, err := client.ScheduleNewWorkflow(ctx, \"ifnotexists\", api.WithInstanceID(\"foo\"), api.WithInput(\"first\"))\n+\trequire.NoError(t, err)\n+\n+\t// Scheduling with the flag while the instance is active is a no-op instead\n+\t// of an AlreadyExists error.\n+\t_, err = client.ScheduleNewWorkflow(ctx, \"ifnotexists\", api.WithInstanceID(\"foo\"), api.WithInput(\"second\"), api.WithScheduleIfNotExists())\n+\trequire.NoError(t, err)\n+\n+\trequire.NoError(t, client.RaiseEvent(ctx, id, \"continue\"))\n+\tmeta, err := client.WaitForWorkflowCompletion(ctx, id)\n+\trequire.NoError(t, err)\n+\tassert.Equal(t, protos.OrchestrationStatus_ORCHESTRATION_STATUS_COMPLETED, meta.GetRuntimeStatus())\n+\tassert.Equal(t, `\"first\"`, meta.GetOutput().GetValue())\n+\n+\t// Scheduling with the flag after completion is also a no-op: the completed\n+\t// instance is not reset and re-run. A restarted instance would be stuck\n+\t// waiting for the \"continue\" event again, so completion metadata still\n+\t// reporting the first execution proves nothing was scheduled.\n+\t_, err = client.ScheduleNewWorkflow(ctx, \"ifnotexists\", api.WithInstanceID(\"foo\"), api.WithInput(\"third\"), api.WithScheduleIfNotExists())\n+\trequire.NoError(t, err)\n+\n+\tmeta, err = client.WaitForWorkflowCompletion(ctx, id)\n+\trequire.NoError(t, err)\n+\tassert.Equal(t, protos.OrchestrationStatus_ORCHESTRATION_STATUS_COMPLETED, meta.GetRuntimeStatus())\n+\tassert.Equal(t, `\"first\"`, meta.GetOutput().GetValue())\n+\n+\t// Without the flag, scheduling over the completed instance still resets and\n+\t// re-runs it (existing behavior is unchanged).\n+\t_, err = client.ScheduleNewWorkflow(ctx, \"ifnotexists\", api.WithInstanceID(\"foo\"), api.WithInput(\"fourth\"))\n+\trequire.NoError(t, err)\n+\trequire.NoError(t, client.RaiseEvent(ctx, id, \"continue\"))\n+\tmeta, err = client.WaitForWorkflowCompletion(ctx, id)\n+\trequire.NoError(t, err)\n+\tassert.Equal(t, `\"fourth\"`, meta.GetOutput().GetValue())\n+}",
+      "patch_truncated": false
+    }
+  ]
+}

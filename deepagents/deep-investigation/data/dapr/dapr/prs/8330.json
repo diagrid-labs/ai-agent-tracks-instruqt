@@ -1,0 +1,33 @@
+{
+  "type": "pr",
+  "number": 8330,
+  "title": "feat: descriptive logging for component startup failure",
+  "state": "closed",
+  "body": "# Description\r\n\r\n> Currently, when dapr sidecar fails during startup, error logs lack clear component detection, making it difficult to identify which component caused the failure.\r\n\r\nThis PR optimizes error log display during component loading failures.\r\nAfter code analysis, I decided to only modify the error log format in kubernetes mode for the following reasons:\r\n\r\nFor standalone mode:\r\n\r\n- Current implementation already clearly shows which component failed to load\r\n- Modifying this part would require extensive test case adjustments\r\n- The code is referenced in multiple places, leading to broader impact\r\n\r\n\r\nFor kubernetes mode:\r\n\r\n- Code analysis reveals that component information is not available before successful loading\r\n- The \"`rpc error: code = unknown`\" issue mentioned primarily occurs during ListComponents calls\r\n- These errors are typically caused by network-related RPC call failures\r\n\r\n\r\n\r\nTherefore, this change only focuses on optimizing the error log format in kubernetes mode to provide clearer error context while maintaining consistency with existing log formats.\r\n\r\n## Issue reference\r\n\r\nclose #8236 \r\n\r\n## Checklist\r\n\r\nPlease make sure you've completed the relevant tasks for this PR, out of the following list:\r\n\r\n- [ ] Code compiles correctly\r\n- [ ] Created/updated tests\r\n- [ ] Unit tests passing\r\n- [ ] End-to-end tests passing\r\n- [ ] Extended the documentation / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Specification has been updated / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n- [ ] Provided sample for the feature / Created issue in the <https://github.com/dapr/docs/> repo: dapr/docs#_[issue number]_\r\n",
+  "labels": [
+    "stale"
+  ],
+  "user": "SpiffyEight77",
+  "created_at": "2024-12-04T16:22:31Z",
+  "updated_at": "2025-04-19T11:51:35Z",
+  "additions": 1,
+  "deletions": 1,
+  "changed_files": 1,
+  "linked_issue_numbers": [
+    8236
+  ],
+  "comments": [],
+  "html_url": "https://github.com/dapr/dapr/pull/8330",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "pkg/internal/loader/kubernetes/components.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "patch": "@@ -51,7 +51,7 @@ func (c *components) Load(ctx context.Context) ([]compapi.Component, error) {\n \t\tPodName:   c.podName,\n \t}, grpcretry.WithMax(operatorMaxRetries), grpcretry.WithPerRetryTimeout(operatorCallTimeout))\n \tif err != nil {\n-\t\treturn nil, err\n+\t\treturn nil, fmt.Errorf(\"error listing components: %s\", err)\n \t}\n \tcomps := resp.GetComponents()\n ",
+      "patch_truncated": false
+    }
+  ]
+}

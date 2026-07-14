@@ -1,0 +1,49 @@
+{
+  "type": "pr",
+  "number": 9605,
+  "title": "fix: mark sidecar as not ready when component processing fails",
+  "state": "closed",
+  "body": "Fixes #7326\n\n## Summary\n\nWhen Dapr sidecar encounters component processing failures (e.g., due to missing secrets or invalid configurations), the sidecar was still being marked as Ready despite the failure. This happened because `initRuntime` did not check for errors that occurred during asynchronous component processing after `flushOutstandingComponents` completed.\n\n## Changes\n\n- Added `processErr` field to `Processor` struct to track the first processing error\n- Added `setProcessError()` and `ProcessError()` methods to store and retrieve processing errors\n- Modified `processComponents()` to store errors before returning\n- Added check in `initRuntime()` to verify no processing errors occurred after flushing components\n- If a processing error is detected, `initRuntime()` returns an error, preventing the sidecar from being marked as ready\n\n## Testing\n\nVerified changes compile successfully with `go build ./pkg/runtime/...`.\n\n## Diff Stats\n\n pkg/runtime/processor/components.go |  1 +\n pkg/runtime/processor/processor.go | 14 ++++++++++++++\n pkg/runtime/runtime.go              |  5 +++++\n 3 files changed, 20 insertions(+)",
+  "labels": [
+    "stale"
+  ],
+  "user": "Br1an67",
+  "created_at": "2026-03-08T08:47:04Z",
+  "updated_at": "2026-06-23T01:18:11Z",
+  "additions": 20,
+  "deletions": 0,
+  "changed_files": 3,
+  "linked_issue_numbers": [
+    7326
+  ],
+  "comments": [],
+  "html_url": "https://github.com/dapr/dapr/pull/9605",
+  "is_seed": false,
+  "partial": false,
+  "files": [
+    {
+      "filename": "pkg/runtime/processor/components.go",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 0,
+      "patch": "@@ -194,6 +194,7 @@ func (p *Processor) processComponents(ctx context.Context) error {\n \t\tp.pendingComponentsWaiting.RUnlock()\n \n \t\tif err != nil {\n+\t\t\tp.setProcessError(err)\n \t\t\treturn err\n \t\t}\n \t}",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/processor/processor.go",
+      "status": "modified",
+      "additions": 14,
+      "deletions": 0,
+      "patch": "@@ -132,6 +132,7 @@ type Processor struct {\n \tpendingComponentsWaiting   sync.RWMutex\n \tpendingComponentDependents map[string][]componentsapi.Component\n \tsubErrCh                   chan error\n+\tprocessErr                 atomic.Pointer[error]\n \n \tlock     sync.RWMutex\n \tchlock   sync.RWMutex\n@@ -266,6 +267,19 @@ func (p *Processor) Process(ctx context.Context) error {\n \t).Run(ctx)\n }\n \n+// setProcessError stores the first processing error encountered.\n+func (p *Processor) setProcessError(err error) {\n+\tp.processErr.CompareAndSwap(nil, &err)\n+}\n+\n+// ProcessError returns the first processing error encountered, or nil if no error occurred.\n+func (p *Processor) ProcessError() error {\n+\tif err := p.processErr.Load(); err != nil {\n+\t\treturn *err\n+\t}\n+\treturn nil\n+}\n+\n // DefaultReporter is the default resource reporter for the registry. It does nothing.\n func DefaultReporter(context.Context, componentsapi.Component, *operatorv1.ResourceResult) error {\n \treturn nil",
+      "patch_truncated": false
+    },
+    {
+      "filename": "pkg/runtime/runtime.go",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 0,
+      "patch": "@@ -662,6 +662,11 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {\n \n \ta.flushOutstandingComponents(ctx)\n \n+\t// Check if there was an error during component processing\n+\tif procErr := a.processor.ProcessError(); procErr != nil {\n+\t\treturn fmt.Errorf(\"failed to process components: %s\", procErr)\n+\t}\n+\n \terr = a.loadHTTPEndpoints(ctx)\n \tif err != nil {\n \t\tlog.Warnf(\"failed to load HTTP endpoints: %s\", err)",
+      "patch_truncated": false
+    }
+  ]
+}
