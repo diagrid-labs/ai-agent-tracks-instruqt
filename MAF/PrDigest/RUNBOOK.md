@@ -202,21 +202,21 @@ This is the durability demo: the workflow is interrupted mid-run by a **real pro
 
 ### How it works
 
-- **Simulated crash — one line you toggle by hand.** `RecordAgentCallActivity.cs` contains a single commented-out line that hard-crashes the process (via `Environment.FailFast`) while the 3rd PR of the run is being recorded. You uncomment it for the first run, then comment it back out for the resume run. There is no environment variable, counter, or marker file — *you* are the switch.
+- **Simulated crash — one line you toggle by hand.** `RecordAgentCallActivity.cs` contains a single line that hard-crashes the process (via `Environment.FailFast`) while the 3rd PR of the run is being recorded. It ships **armed** (uncommented): the first run crashes, and you comment it out for the resume run. There is no environment variable, counter, or marker file — *you* are the switch.
+
+> **Note:** because the line ships armed, a normal digest run (the "Triggering a Digest Run" section above) will also crash on `#9893`. Comment the line out first if you just want a clean, non-crashing run.
 - **Why the 3rd PR:** the run analyses the first 7 PRs from `data/dapr/dapr/prs`, sorted ascending: `9719, 9855, 9893, 9974, 10053, 10054, 10093`. The gate targets `#9893` (the 3rd), so the crash lands squarely mid-fan-out. It trips *before* the ledger append, so `#9893` is recorded only on the resumed run and never duplicated.
 - **The agent-call ledger:** every executed agent call appends one line to `agent-calls.log` — `<timestamp>\tPR #<number>\t<title>`. Recording happens inside a *checkpointed workflow activity*, so on resume a completed record is replayed from durable history and is **not** re-appended. The finished ledger therefore contains each PR exactly once, with a visible time gap at the moment of restart.
 
 The ledger is written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a `digest-out` folder in the parent of the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find it easily.
 
-### Step 1: Arm the crash — uncomment one line
+### Step 1: Confirm the crash is armed
 
-Open `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` and **uncomment** the demo line inside `RunAsync`:
+The demo line inside `RunAsync` of `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` ships **armed** (uncommented), so no change is needed for the first run:
 
 ```csharp
 if (record.Number == 9893) Environment.FailFast("Simulated crash — demonstrating durable resume.");
 ```
-
-Save the file.
 
 ### Step 2: Launch
 
