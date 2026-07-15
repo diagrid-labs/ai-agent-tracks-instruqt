@@ -78,6 +78,21 @@ public class AgentCallLedgerTests : IDisposable
     }
 
     [Fact]
+    public void CountEntries_reflects_the_number_of_recorded_calls()
+    {
+        var ledger = new AgentCallLedger(_dir);
+        var ts = new DateTime(2026, 6, 29, 12, 0, 0, DateTimeKind.Utc);
+
+        // The durability-demo crash toggle gates on this count, so it must be 0 before any
+        // append and grow by one per recorded call.
+        Assert.Equal(0, ledger.CountEntries());
+        ledger.Append(201, "a", ts);
+        Assert.Equal(1, ledger.CountEntries());
+        ledger.Append(202, "b", ts);
+        Assert.Equal(2, ledger.CountEntries());
+    }
+
+    [Fact]
     public void Concurrent_appends_do_not_corrupt_or_drop_lines()
     {
         var ledger = new AgentCallLedger(_dir);

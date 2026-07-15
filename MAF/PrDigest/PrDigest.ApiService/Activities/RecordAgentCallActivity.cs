@@ -14,14 +14,15 @@ public sealed partial class RecordAgentCallActivity(ILogger<RecordAgentCallActiv
     public override Task<bool> RunAsync(WorkflowActivityContext context, AgentCallRecord record)
     {
         var outputDir = DemoPaths.OutputDirectory();
+        var ledger = new AgentCallLedger(outputDir);
 
-        // 💥 DURABILITY DEMO — leave the `if` statement uncommented for a first run to simulate a crash
-        // partway through the fan-out (#9893 is the 3rd of the 7 PRs in the run), then comment
-        // it out and run again: the workflow rehydrates from durable Valkey state and finishes
-        // WITHOUT repeating the agent calls already recorded below.
-        if (record.Number == 9893) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+        // 💥 DURABILITY DEMO — leave the `if` statement uncommented for a first run to simulate a
+        // crash partway through the fan-out (once a couple of agent calls have been recorded), then
+        // comment it out and run again: the workflow rehydrates from durable Valkey state and
+        // finishes WITHOUT repeating the agent calls already recorded below.
+        if (ledger.CountEntries() >= 2) Environment.FailFast("Simulated crash — demonstrating durable resume.");
 
-        new AgentCallLedger(outputDir).Append(record.Number, record.Title, DateTime.UtcNow);
+        ledger.Append(record.Number, record.Title, DateTime.UtcNow);
         LogRecorded(logger, record.Number);
         return Task.FromResult(true);
     }

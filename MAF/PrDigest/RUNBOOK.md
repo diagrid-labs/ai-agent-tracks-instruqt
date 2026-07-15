@@ -202,10 +202,10 @@ This is the durability demo: the workflow is interrupted mid-run by a **real pro
 
 ### How it works
 
-- **Simulated crash — one line you toggle by hand.** `RecordAgentCallActivity.cs` contains a single line that hard-crashes the process (via `Environment.FailFast`) while the 3rd PR of the run is being recorded. It ships **armed** (uncommented): the first run crashes, and you comment it out for the resume run. There is no environment variable, counter, or marker file — *you* are the switch.
+- **Simulated crash — one line you toggle by hand.** `RecordAgentCallActivity.cs` contains a single line that hard-crashes the process (via `Environment.FailFast`) once a couple of agent calls have already been recorded — i.e. partway through the fan-out. It ships **armed** (uncommented): the first run crashes, and you comment it out for the resume run. There is no environment variable, static counter, or marker file — the crash is driven off the ledger's own line count, and *you* are the switch.
 
-> **Note:** because the line ships armed, a normal digest run (the "Triggering a Digest Run" section above) will also crash on `#9893`. Comment the line out first if you just want a clean, non-crashing run.
-- **Why the 3rd PR:** the run analyses the first 7 PRs from `data/dapr/dapr/prs`, sorted ascending: `9719, 9855, 9893, 9974, 10053, 10054, 10093`. The gate targets `#9893` (the 3rd), so the crash lands squarely mid-fan-out. It trips *before* the ledger append, so `#9893` is recorded only on the resumed run and never duplicated.
+> **Note:** because the line ships armed, a normal digest run (the "Triggering a Digest Run" section above) will also crash partway through. Comment the line out first if you just want a clean, non-crashing run.
+- **Why count-based, not a fixed PR:** the 7 PRs are analysed concurrently, so which ones finish first is nondeterministic. Gating on the ledger count (`>= 2`) guarantees the crash lands mid-run with roughly two calls already banked, regardless of ordering — the crash trips *before* the third record is appended, so that in-flight PR is recorded only on the resumed run and never duplicated.
 - **The agent-call ledger:** every executed agent call appends one line to `agent-calls.log` — `<timestamp>\tPR #<number>\t<title>`. Recording happens inside a *checkpointed workflow activity*, so on resume a completed record is replayed from durable history and is **not** re-appended. The finished ledger therefore contains each PR exactly once, with a visible time gap at the moment of restart.
 
 The ledger is written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a `digest-out` folder in the parent of the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find it easily.
@@ -215,7 +215,7 @@ The ledger is written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a 
 The demo line inside `RunAsync` of `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` ships **armed** (uncommented), so no change is needed for the first run:
 
 ```csharp
-if (record.Number == 9893) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+if (ledger.CountEntries() >= 2) Environment.FailFast("Simulated crash — demonstrating durable resume.");
 ```
 
 ### Step 2: Launch
@@ -248,7 +248,7 @@ curl -X POST "http://localhost:5090/start" -H "Content-Type: application/json" -
 
 ### Step 4: Watch it crash
 
-The API process terminates **by itself** while recording PR #9893. In the console (or the `pr-digest` logs in the Aspire dashboard) you will see the agent calls that finished first, then the process dies — for example:
+The API process terminates **by itself** once two calls have been recorded (the third trips the crash before it is appended). In the console (or the `pr-digest` logs in the Aspire dashboard) you will see the agent calls that finished first, then the process dies — for example:
 
 ```
 🤖 Analyzing PR #9719 with the PrAnalyzer agent
@@ -256,7 +256,7 @@ The API process terminates **by itself** while recording PR #9893. In the consol
 📒 Recorded agent call for PR #9855.
 ```
 
-Inspect the ledger so far — because the crash trips *before* #9893 is appended, it holds only the calls that completed first (the fan-out is concurrent, so the exact count varies slightly):
+Inspect the ledger so far — it holds the ~2 calls recorded before the crash (which PRs they are depends on the concurrent fan-out):
 
 ```bash
 cat "$DIGEST_OUTPUT_DIR/agent-calls.log"
@@ -267,7 +267,7 @@ cat "$DIGEST_OUTPUT_DIR/agent-calls.log"
 Re-open `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` and **comment out** the line again:
 
 ```csharp
-// if (record.Number == 9893) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+// if (ledger.CountEntries() >= 2) Environment.FailFast("Simulated crash — demonstrating durable resume.");
 ```
 
 Save, then relaunch:

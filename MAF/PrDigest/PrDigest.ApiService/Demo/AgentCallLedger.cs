@@ -41,6 +41,14 @@ public sealed class AgentCallLedger(string directory)
             .ToList();
     }
 
+    // Number of recorded calls, read under the same lock as Append so it never races with a
+    // concurrent append from another fan-out branch. Used by the durability-demo crash toggle.
+    public int CountEntries()
+    {
+        lock (AppendLock)
+            return ReadEntries().Count;
+    }
+
     // Tolerant of a torn final line left by a hard crash mid-append: malformed lines are
     // skipped rather than throwing, so the ledger stays readable after the simulated crash.
     private static LedgerEntry? TryParse(string line)
