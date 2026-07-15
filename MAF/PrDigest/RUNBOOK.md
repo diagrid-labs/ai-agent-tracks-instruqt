@@ -62,7 +62,7 @@ Expected: version 10.0.x or higher.
 
 ### Data Directory
 
-The application reads PR data from `MAF/PrDigest/data/dapr/dapr/prs/`. Seven PR JSON fixtures (201.json–207.json) are included with varied risk signals to make the ranked digest interesting.
+The application reads PR data from `MAF/PrDigest/data/dapr/dapr/prs/`. Ten PR JSON fixtures (9719.json–10112.json) are included with varied risk signals to make the ranked digest interesting; a `maxPrs=7` run analyses the first seven by number (`9719, 9855, 9893, 9974, 10053, 10054, 10093`).
 
 ## Starting the Application
 
@@ -361,7 +361,7 @@ The `pr-digest.md` file will then be written to that directory. The durability-d
 
 ## Notes
 
-- **Data snapshot:** The 7 PR JSON fixtures (201–207) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
+- **Data snapshot:** The 10 PR JSON fixtures (9719–10112) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
 - **LLM model:** The application uses OpenAI's `gpt-4o-mini` via the Dapr conversation API. AI-generated summaries in the digest are illustrative; they are not production-grade analyses.
 - **Durable state:** The Valkey state store (managed by Aspire) persists all workflow progress, enabling crash-and-resume semantics. A new workflow instance with the same ID will resume from where the previous one was interrupted.
 
