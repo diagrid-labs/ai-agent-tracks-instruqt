@@ -28,15 +28,7 @@ builder.Services.AddSingleton(new GitHubDataReader(repoDataDir));
 // PR detail is fetched deterministically by FetchPullRequestDetailActivity and
 // passed into the analyzer prompt, so the analyzer makes a single tool-free call.
 builder.Services.AddDaprAgents(
-        opt => opt.AddContext(() => PrDigestJsonContext.Default),
-        opt =>
-        {
-            opt.RegisterWorkflow<PrDigestWorkflow>();
-            opt.RegisterActivity<ListOpenPullRequestsActivity>();
-            opt.RegisterActivity<FetchPullRequestDetailActivity>();
-            opt.RegisterActivity<RecordAgentCallActivity>();
-            opt.RegisterActivity<WriteDigestActivity>();
-        })
+        opt => opt.AddContext(() => PrDigestJsonContext.Default))
     .WithAgent(
         agentName: AgentNames.PrAnalyzer,
         conversationComponentName: "conversation-prdigest",
