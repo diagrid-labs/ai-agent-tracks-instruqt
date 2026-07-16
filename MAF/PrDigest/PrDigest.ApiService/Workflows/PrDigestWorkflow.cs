@@ -74,8 +74,8 @@ public sealed partial class PrDigestWorkflow : Workflow<PrDigestInput, PrDigestO
         }
 
         // Durably record that this PR's agent call ran. Checkpointed like any activity, so on
-        // resume it replays from history (no duplicate ledger line) and the deterministic
-        // crash gate inside it fires exactly once.
+        // resume it replays from history (no duplicate ledger line). The activity also carries
+        // the durability-demo crash toggle described in the RUNBOOK.
         await context.CallActivityAsync<bool>(
             nameof(RecordAgentCallActivity), new AgentCallRecord(pr.Number, pr.Title));
 

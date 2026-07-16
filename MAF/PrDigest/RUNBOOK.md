@@ -62,7 +62,7 @@ Expected: version 10.0.x or higher.
 
 ### Data Directory
 
-The application reads PR data from `MAF/PrDigest/data/dapr/dapr/prs/`. Seven PR JSON fixtures (201.json–207.json) are included with varied risk signals to make the ranked digest interesting.
+The application reads PR data from `MAF/PrDigest/data/dapr/dapr/prs/`. Ten PR JSON fixtures (9719.json–10112.json) are included with varied risk signals to make the ranked digest interesting; a `maxPrs=7` run analyses the first seven by number (`9719, 9855, 9893, 9974, 10053, 10054, 10093`).
 
 ## Starting the Application
 
@@ -198,24 +198,34 @@ You should see a mix of LOW (scores 0–1), MEDIUM (scores 2–4), and HIGH (sco
 
 ## Crash-and-Resume Verification
 
-This is the durability demo: the workflow is interrupted mid-run by a **real process crash**, and on restart it resumes from durable Valkey state — **without re-running the `PrAnalyzer` agent (LLM) calls that already completed.** A deterministic crash gate and an append-only *agent-call ledger* make this provable instead of something you take on faith.
+This is the durability demo: the workflow is interrupted mid-run by a **real process crash**, and on restart it resumes from durable Valkey state — **without re-running the `PrAnalyzer` agent (LLM) calls that already completed.** An append-only *agent-call ledger* makes this provable instead of something you take on faith.
 
 ### How it works
 
-- **Deterministic crash:** set `CRASH_AFTER_AGENT_CALLS=<N>` before launching. The API hard-crashes (via `Environment.FailFast`) exactly once, right after the Nth agent call executes. A marker file (`agent-calls.crash-marker`) is written so the restarted process never crashes again at the same point.
+- **Simulated crash — one line you toggle by hand.** `RecordAgentCallActivity.cs` contains a single line that hard-crashes the process (via `Environment.FailFast`) once a couple of agent calls have already been recorded — i.e. partway through the fan-out. It ships **armed** (uncommented): the first run crashes, and you comment it out for the resume run. There is no environment variable, static counter, or marker file — the crash is driven off the ledger's own line count, and *you* are the switch.
+
+> **Note:** because the line ships armed, a normal digest run (the "Triggering a Digest Run" section above) will also crash partway through. Comment the line out first if you just want a clean, non-crashing run.
+- **Why count-based, not a fixed PR:** the 7 PRs are analysed concurrently, so which ones finish first is nondeterministic. Gating on the ledger count (`>= 2`) guarantees the crash lands mid-run with roughly two calls already banked, regardless of ordering — the crash trips *before* the third record is appended, so that in-flight PR is recorded only on the resumed run and never duplicated.
 - **The agent-call ledger:** every executed agent call appends one line to `agent-calls.log` — `<timestamp>\tPR #<number>\t<title>`. Recording happens inside a *checkpointed workflow activity*, so on resume a completed record is replayed from durable history and is **not** re-appended. The finished ledger therefore contains each PR exactly once, with a visible time gap at the moment of restart.
 
-Both files are written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a `digest-out` folder in the parent of the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find them easily.
+The ledger is written to the digest output directory (`DIGEST_OUTPUT_DIR`, or a `digest-out` folder in the parent of the API service's working directory if unset). Set `DIGEST_OUTPUT_DIR` to a known path so you can find it easily.
 
-### Step 1: Arm the crash gate and launch
+### Step 1: Confirm the crash is armed
 
-Crash after 3 agent calls (7 PRs total, so 4 remain for the resumed run). Set the env vars in the shell that launches the AppHost, **before** `aspire run`:
+The demo line inside `RunAsync` of `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` ships **armed** (uncommented), so no change is needed for the first run:
+
+```csharp
+if (ledger.CountEntries() >= 2) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+```
+
+### Step 2: Launch
+
+Set the output directory in the shell that launches the AppHost, then run:
 
 **PowerShell (Windows):**
 
 ```powershell
 $env:DIGEST_OUTPUT_DIR = "$PWD\digest-out"
-$env:CRASH_AFTER_AGENT_CALLS = "3"
 aspire run
 ```
 
@@ -223,11 +233,10 @@ aspire run
 
 ```bash
 export DIGEST_OUTPUT_DIR="$PWD/digest-out"
-export CRASH_AFTER_AGENT_CALLS=3
 aspire run
 ```
 
-### Step 2: Start a run
+### Step 3: Start a run
 
 ```bash
 curl -X POST "http://localhost:5090/start" -H "Content-Type: application/json" -d '{
@@ -237,44 +246,47 @@ curl -X POST "http://localhost:5090/start" -H "Content-Type: application/json" -
 }'
 ```
 
-### Step 3: Watch it crash
+### Step 4: Watch it crash
 
-The API process terminates **by itself** after the 3rd agent call. In the console (or the `pr-digest` logs in the Aspire dashboard) you will see something like:
+The API process terminates **by itself** once two calls have been recorded (the third trips the crash before it is appended). In the console (or the `pr-digest` logs in the Aspire dashboard) you will see the agent calls that finished first, then the process dies — for example:
 
 ```
-🤖 Analyzing PR #201 with the PrAnalyzer agent
-📒 Recorded agent call for PR #201 (call #1 in this process).
-📒 Recorded agent call for PR #202 (call #2 in this process).
-💥 CRASH GATE TRIPPED after 3 agent call(s) — killing the process to simulate a crash.
+🤖 Analyzing PR #9719 with the PrAnalyzer agent
+📒 Recorded agent call for PR #9719.
+📒 Recorded agent call for PR #9855.
 ```
 
-Inspect the ledger so far — it holds ~2 lines (the call that tripped the gate is intentionally recorded only after restart, so it is never duplicated):
+Inspect the ledger so far — it holds the ~2 calls recorded before the crash (which PRs they are depends on the concurrent fan-out):
 
 ```bash
 cat "$DIGEST_OUTPUT_DIR/agent-calls.log"
 ```
 
-### Step 4: Disarm and restart
+### Step 5: Disarm and restart — comment the line out
 
-Disable the gate so the resumed run can finish, then relaunch (the marker file would also prevent a second crash, but unsetting is clearer):
+Re-open `PrDigest.ApiService/Activities/RecordAgentCallActivity.cs` and **comment out** the line again:
+
+```csharp
+// if (ledger.CountEntries() >= 2) Environment.FailFast("Simulated crash — demonstrating durable resume.");
+```
+
+Save, then relaunch:
 
 **PowerShell (Windows):**
 
 ```powershell
-Remove-Item Env:CRASH_AFTER_AGENT_CALLS
 aspire run
 ```
 
 **bash (macOS/Linux):**
 
 ```bash
-unset CRASH_AFTER_AGENT_CALLS   # or: export CRASH_AFTER_AGENT_CALLS=0
 aspire run
 ```
 
 Aspire reconnects to the same Valkey container (its data volume persists across restarts), the workflow engine rehydrates instance `run-crash`, and it resumes automatically — you do **not** call `/resume` (that is only for workflows suspended via `/pause`).
 
-### Step 5: Poll until completed
+### Step 6: Poll until completed
 
 ```bash
 endpoint="http://localhost:5090"
@@ -345,11 +357,11 @@ export DIGEST_OUTPUT_DIR="/path/to/output"
 dotnet run --project PrDigest/PrDigest.AppHost
 ```
 
-The `pr-digest.md` file will then be written to that directory. The durability-demo artifacts — `agent-calls.log` (the agent-call ledger) and `agent-calls.crash-marker` (the one-shot crash sentinel) — are written to the **same** directory.
+The `pr-digest.md` file will then be written to that directory. The durability-demo artifact — `agent-calls.log` (the agent-call ledger) — is written to the **same** directory.
 
 ## Notes
 
-- **Data snapshot:** The 7 PR JSON fixtures (201–207) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
+- **Data snapshot:** The 10 PR JSON fixtures (9719–10112) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
 - **LLM model:** The application uses OpenAI's `gpt-4o-mini` via the Dapr conversation API. AI-generated summaries in the digest are illustrative; they are not production-grade analyses.
 - **Durable state:** The Valkey state store (managed by Aspire) persists all workflow progress, enabling crash-and-resume semantics. A new workflow instance with the same ID will resume from where the previous one was interrupted.
 

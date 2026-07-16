@@ -22,12 +22,6 @@ builder.AddProject<Projects.PrDigest_ApiService>("pr-digest")
     .WithEnvironment("DATA_DIR", dataDir)
     // Repo org/name selector; resolves to <DATA_DIR>/dapr/dapr.
     .WithEnvironment("REPO", "dapr/dapr")
-    // Durability demo: when this is a positive integer, the API hard-crashes after that many
-    // PrAnalyzer agent calls (once), so the crash-and-resume lab fires at the same point every
-    // run. Unset/0 means never crash (normal runs). Arm it with `export CRASH_AFTER_AGENT_CALLS=3`
-    // before `aspire run`.
-    .WithEnvironment("CRASH_AFTER_AGENT_CALLS",
-        Environment.GetEnvironmentVariable("CRASH_AFTER_AGENT_CALLS") ?? "0")
     // Pin the API's HTTP endpoint to a fixed host port so the RUNBOOK URLs are stable.
     .WithEndpoint("http", endpoint => endpoint.Port = 5090)
     .WithDaprSidecar(new DaprSidecarOptions
