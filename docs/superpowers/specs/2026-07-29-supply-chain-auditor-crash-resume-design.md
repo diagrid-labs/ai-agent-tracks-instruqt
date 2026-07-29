@@ -54,25 +54,35 @@ Dependabot bump with a resolvable source repo, so the `analyze` branch is taken.
 
 ### 1. Crash toggle — one armed line in `graph.py`
 
-A single, clearly-commented `os._exit(1)` at the **top of `render_report`** — the node
-that runs *after* `analyze` has completed and checkpointed. Ships **armed**
-(uncommented). No gate or counter: this is a single linear pipeline, so `render_report`
-runs exactly once and the crash point is already deterministic.
+A single, clearly-commented crash at the **top of `render_report`** — the node that
+runs *after* `analyze` has completed and checkpointed. Ships **armed** (uncommented),
+gated on `ledger.count() >= 2`, mirroring MAF's `ledger.CountEntries() >= 2`:
 
 ```python
 def render_report(state: AuditState) -> dict:
-    # 💥 DURABILITY DEMO — armed by default. This crashes the process AFTER the analyze
-    # (Claude) node has completed and been checkpointed to Redis. Comment this line out
-    # and re-run: Dapr rehydrates the workflow, replays gather_evidence + analyze from
-    # history (NO re-fetch, NO second Claude call), and only render_report re-runs.
-    import os; os._exit(1)          # ← comment out for the resume run
+    # 💥 DURABILITY DEMO — armed by default. By the time render_report runs, both
+    # gather_evidence and analyze have each recorded a ledger line (count == 2), so this
+    # crashes the process AFTER the analyze (Claude) call has completed and checkpointed
+    # to Redis. Comment this line out and re-run: Dapr rehydrates the workflow, replays
+    # gather_evidence + analyze from history (NO re-fetch, NO second Claude call), and
+    # only render_report re-runs.
+    if ledger.count() >= 2: os._exit(1)     # ← comment out for the resume run
 
     # ...existing render logic (record ledger line, render report)...
 ```
 
-The crash line is placed **before** `render_report`'s own ledger append and render
+The crash check is placed **before** `render_report`'s own ledger append and render
 work, so on the first run `render_report` writes nothing and, on resume, re-runs
 cleanly with no duplicate ledger line.
+
+**Why gate on the ledger count instead of crashing unconditionally:** the gate is
+naturally false in the `render_report` unit test (which runs with an empty `tmp_path`
+ledger, count 0) so `uv run pytest` stays alive, and naturally true in the real
+run (gather_evidence + analyze have each appended, count 2). It is the same mechanism
+MAF uses and requires no environment variable, static counter, or marker file. On the
+metadata-only `finalize` branch (no `analyze`, no source repo) the count is 1, so the
+crash does not arm — the demo uses a bump with a resolvable repo, which takes the
+`analyze` branch.
 
 Because the crash ships armed, a normal (non-durability) run will also crash in
 `render_report`; the README notes this and tells the learner to comment the line out
@@ -151,8 +161,10 @@ in the codebase is the single commented line in `graph.py`.
 - Add a **"Crash-and-Resume"** section (parallel to MAF's RUNBOOK section and the
   deepagents README): arm (default) → run → crash after `analyze` → inspect the ledger
   (`gather_evidence` + `analyze` lines present) → comment out the line → re-run →
-  resume → verify. Include the reset command:
-  `docker exec dapr_redis redis-cli flushall`.
+  resume → verify. Include the reset commands: `docker exec dapr_redis redis-cli
+  flushall` (purge the workflow state) **and** delete the ledger file
+  (`rm -f audit-out/audit-ledger.log`) so a fresh demo does not count stale lines
+  toward the crash gate.
 - Fix the existing paragraph in the "How it works" section that says a crash after
   `gather_evidence` "resumes at `analyze` without re-fetching." It now resumes at
   `render_report`, after `analyze`, so the LLM call is not repeated.
