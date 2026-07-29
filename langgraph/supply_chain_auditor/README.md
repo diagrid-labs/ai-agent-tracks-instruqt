@@ -150,10 +150,28 @@ Claude `analyze` call that already completed.** An append-only *stage ledger*
 The ledger and report are written to `AUDIT_OUTPUT_DIR` (default: an `audit-out` folder in
 the working directory). Set it to a known path so you can find them easily.
 
+### Prerequisites (local Dapr sidecar)
+
+This demo runs against a **local Dapr sidecar** backed by Redis — the state store in
+`resources/workflowstate.yaml` (`actorStateStore: "true"`), which also backs the Dapr
+Workflow engine. The Redis container must keep running across the crash and the restart:
+that persisted state is exactly what lets the second run resume instead of starting over.
+
+```bash
+dapr init                         # once per machine — starts the dapr_redis container on :6379
+uv sync                           # install dependencies
+docker ps | grep dapr_redis       # confirm Redis is up
+```
+
+Provide your `ANTHROPIC_API_KEY` — either in a local `.env` (see [Configuration](#configuration),
+`app.py` calls `load_dotenv()`) or inline on the command as shown below. `GITHUB_TOKEN` is
+optional; without it the PR comment is a dry-run (printed, not posted), which is fine for the demo.
+
 ### Run 1 — crash
 
-The crash ships **armed**, so no edit is needed. Set the output dir and run against a real
-Dependabot PR with a resolvable source repo (so the `analyze` branch is taken):
+The crash ships **armed**, so no code edit is needed for the first run. Point the output dir at a
+known path and start the workflow against a real Dependabot PR with a resolvable source repo (so
+the `analyze` branch — the LLM path — is taken):
 
 ```bash
 export AUDIT_OUTPUT_DIR="$PWD/audit-out"
@@ -161,8 +179,10 @@ ANTHROPIC_API_KEY=sk-ant-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTE
   uv run dapr run --app-id supply-chain-auditor-langgraph --resources-path ./resources -- python app.py
 ```
 
-The process dies inside `render_report`, after `analyze` completed and checkpointed.
-Inspect the ledger — it holds the `gather_evidence` and `analyze` lines:
+`dapr run` starts the sidecar and runs `python app.py` against it. Within a minute the process
+**dies by itself** inside `render_report`, after `gather_evidence` and `analyze` have completed and
+been checkpointed to Redis — you'll see a non-zero exit and the `dapr run` command return. Inspect
+the ledger; it holds the `gather_evidence` and `analyze` lines from this run:
 
 ```bash
 cat "$AUDIT_OUTPUT_DIR/audit-ledger.log"
@@ -176,9 +196,19 @@ Comment out the crash line in `graph.py`'s `render_report`:
 # if ledger.count() >= 2: os._exit(1)
 ```
 
-Re-run the **same** command. Dapr rehydrates instance `audit-dapr-dapr-agents-635-<pkg>`,
-replays `gather_evidence` + `analyze` from history (no re-fetch, no second Claude call), and
-runs only `render_report` to completion.
+Re-run the **exact same command** (re-export `AUDIT_OUTPUT_DIR` if you opened a new shell):
+
+```bash
+export AUDIT_OUTPUT_DIR="$PWD/audit-out"
+ANTHROPIC_API_KEY=sk-ant-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
+  uv run dapr run --app-id supply-chain-auditor-langgraph --resources-path ./resources -- python app.py
+```
+
+`app.py` derives the same deterministic instance ID, finds it still in flight in Redis, and polls
+it to completion — it does **not** schedule a new run. Dapr rehydrates instance
+`audit-dapr-dapr-agents-635-<pkg>`, replays `gather_evidence` + `analyze` from history (no
+re-fetch, no second Claude call), and runs only `render_report`. This time the workflow reaches
+**Completed**, the Markdown report is rendered, and the PR comment is posted (or dry-run printed).
 
 ### Verify — durability, proven
 
