@@ -76,3 +76,22 @@ def test_failed_workflow_raises():
     runner = _FakeRunner(_FakeClient(state=_FakeState(WorkflowStatus.FAILED, failure_details="boom")))
     with pytest.raises(RuntimeError):
         runtime.resume_or_invoke(runner, {"bump": {}}, "audit-x")
+
+
+def test_running_workflow_poll_timeout_raises():
+    client = _FakeClient(state=_FakeState(WorkflowStatus.RUNNING), completion_state=None)
+    runner = _FakeRunner(client)
+    with pytest.raises(RuntimeError):
+        runtime.resume_or_invoke(runner, {"bump": {}}, "audit-x")
+    assert client.waited is True
+    assert runner.invoked_with is None  # never re-scheduled
+
+
+def test_running_workflow_resumed_then_failed_raises():
+    completion = _FakeState(WorkflowStatus.FAILED, failure_details="boom")
+    client = _FakeClient(state=_FakeState(WorkflowStatus.RUNNING), completion_state=completion)
+    runner = _FakeRunner(client)
+    with pytest.raises(RuntimeError):
+        runtime.resume_or_invoke(runner, {"bump": {}}, "audit-x")
+    assert client.waited is True
+    assert runner.invoked_with is None  # never re-scheduled

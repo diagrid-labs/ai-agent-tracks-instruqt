@@ -56,7 +56,7 @@ def resume_or_invoke(
     if status in _IN_FLIGHT:
         logger.info("Workflow %s in flight (%s) — resuming by polling", workflow_id, status)
         final = client.wait_for_workflow_completion(
-            workflow_id, timeout_in_seconds=int(timeout)
+            workflow_id, timeout_in_seconds=max(1, int(timeout))
         )
         if final is None:
             raise RuntimeError(f"workflow {workflow_id} did not complete before timeout")

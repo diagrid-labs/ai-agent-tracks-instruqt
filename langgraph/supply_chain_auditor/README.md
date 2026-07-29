@@ -194,6 +194,11 @@ Confirm:
 2. **A clear timestamp gap** before the `render_report` line — the wall-clock cost of the
    crash + restart, inside a single logical workflow run.
 
+This "exactly three lines / analyze once" invariant assumes a **single-bump PR**: the
+ledger file is shared across all bumps in a run (keyed only by `AUDIT_OUTPUT_DIR`), and
+`app.py` audits each bump as a separate workflow, so a grouped/multi-bump PR accumulates
+more lines and the crash gate (`count() >= 2`) fires on the first bump.
+
 ### Reset for a fresh demo
 
 Purge the workflow state **and** the ledger (so stale lines do not count toward the crash
