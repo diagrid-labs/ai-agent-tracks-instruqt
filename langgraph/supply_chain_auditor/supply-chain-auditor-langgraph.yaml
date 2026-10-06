@@ -1,0 +1,16 @@
+version: 1
+common:
+  appLogDestination: console
+  resourcesPath: ./resources
+  enableAppHealthCheck: false
+  logLevel: info
+apps:
+  # One-shot auditor: `python app.py` runs the durable audit workflow once
+  # against the PR context in the environment, posts the comment, and exits.
+  # appPort is nominal — the auditor reaches the sidecar over gRPC and does not
+  # serve HTTP.
+  - appID: supply-chain-auditor-langgraph
+    appDirPath: ./
+    appPort: 8080
+    appProtocol: http
+    command: ["python3", "app.py"]
