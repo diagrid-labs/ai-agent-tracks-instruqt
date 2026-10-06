@@ -30,7 +30,8 @@ builder.AddProject<Projects.PrDigest_ApiService>("pr-digest")
         ResourcesPaths = ["resources"]
     });
 
-builder.AddExecutable("dapr-dev-dashboard", "diagrid-dev-dashboard", ".")
-    .WithEndpoint("http", endpoint => endpoint.Port = 9090);
+builder.AddExecutable("dapr-dev-dashboard", "diagrid-dev-dashboard", ".",
+        "--port", "9090", "--bind", "0.0.0.0", "--no-open")
+    .WithHttpEndpoint(port: 9090, isProxied: false);
 
 builder.Build().Run();
