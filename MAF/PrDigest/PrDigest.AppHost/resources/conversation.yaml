@@ -10,7 +10,7 @@ spec:
       name: openai-api-key
       key: openai-api-key
   - name: model
-    value: gpt-4o-mini
+    value: gpt-4.1-mini
   - name: cacheTTL
     value: 0
 auth:
