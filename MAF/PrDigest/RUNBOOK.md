@@ -18,7 +18,7 @@ docker ps
 
 ### OpenAI
 
-The application uses OpenAI's `gpt-4o-mini` model through the Dapr conversation API. You need an OpenAI API key with access to chat completions.
+The application uses OpenAI's `gpt-4.1-mini` model through the Dapr conversation API. You need an OpenAI API key with access to chat completions.
 
 **Get an API key:**
 
@@ -48,7 +48,7 @@ Then edit `PrDigest.AppHost/secrets.json` and set your key:
 }
 ```
 
-`secrets.json` is git-ignored. The conversation component (`resources/conversation.yaml`) resolves the key via `secretKeyRef` against the `local-secret-store` component (`resources/secretstore.yaml`). The model is configured in `conversation.yaml` (`gpt-4o-mini` by default) and can be changed to any chat-capable OpenAI model.
+`secrets.json` is git-ignored. The conversation component (`resources/conversation.yaml`) resolves the key via `secretKeyRef` against the `local-secret-store` component (`resources/secretstore.yaml`). The model is configured in `conversation.yaml` (`gpt-4.1-mini` by default) and can be changed to any chat-capable OpenAI model.
 
 ### .NET SDK
 
@@ -362,7 +362,7 @@ The `pr-digest.md` file will then be written to that directory. The durability-d
 ## Notes
 
 - **Data snapshot:** The 10 PR JSON fixtures (9719–10112) are a static out-of-band snapshot collected from a Dapr repository configuration. They simulate realistic PRs with varied risk signals but are not live GitHub data.
-- **LLM model:** The application uses OpenAI's `gpt-4o-mini` via the Dapr conversation API. AI-generated summaries in the digest are illustrative; they are not production-grade analyses.
+- **LLM model:** The application uses OpenAI's `gpt-4.1-mini` via the Dapr conversation API. AI-generated summaries in the digest are illustrative; they are not production-grade analyses.
 - **Durable state:** The Valkey state store (managed by Aspire) persists all workflow progress, enabling crash-and-resume semantics. A new workflow instance with the same ID will resume from where the previous one was interrupted.
 
 ## Troubleshooting

@@ -41,7 +41,7 @@ def main():
     issue_number = args.issue
 
     agent = create_deep_agent(
-        model="openai:gpt-4o-mini",
+        model="openai:gpt-4.1-mini",
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
         name="issue-investigator",
