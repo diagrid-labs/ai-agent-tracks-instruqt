@@ -1,7 +1,7 @@
 """Pydantic models shared across the auditor.
 
 Models that cross the LLM boundary (``LLMVerdict``, ``Finding``) deliberately
-avoid Pydantic field constraints (``ge``/``le``/``max_length``): Anthropic
+avoid Pydantic field constraints (``ge``/``le``/``max_length``): OpenAI strict
 structured output / tool schemas don't support numeric or string constraints,
 so we validate and clamp in :mod:`auditor_core.reconcile` instead.
 
