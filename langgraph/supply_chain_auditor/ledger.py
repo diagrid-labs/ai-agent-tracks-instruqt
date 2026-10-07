@@ -4,7 +4,7 @@ Records each genuinely-executed pipeline stage as one line in ``audit-ledger.log
 Because every LangGraph node runs as a checkpointed Dapr Workflow activity, a
 completed stage replays from durable history and its body is not re-executed on
 resume — so a stage recorded here appears exactly once across a crash-and-restart,
-proving the expensive ``analyze`` (Claude) call is not repeated.
+proving the expensive ``analyze`` (LLM) call is not repeated.
 
 This is demo infrastructure, kept out of the drift-checked ``auditor_core`` package.
 """
