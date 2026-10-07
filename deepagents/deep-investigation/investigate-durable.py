@@ -32,7 +32,7 @@ Investigate the given issue number thoroughly:
 1. Read the issue itself and its comments.
 2. Find and read any linked pull requests, their comments, and changed files.
 3. Search for related issues that show similar symptoms.
-4. Write your findings to a file named investigation-<issue-number>.md with these sections:
+4. Write your findings to a file named investigation-<issue-number>-durable.md with these sections:
    - Summary
    - Probable Root Cause
    - Related Work (linked PRs, related issues)
@@ -98,7 +98,7 @@ async def main():
 
 def write_report(issue_number: str, output: dict):
     files = output.get("files", {})
-    report_name = f"investigation-{issue_number}.md"
+    report_name = f"investigation-{issue_number}-durable.md"
     key = next((k for k in files if k.lstrip("/") == report_name), None)
     if key is not None:
         with open(report_name, "w", encoding="utf-8") as f:

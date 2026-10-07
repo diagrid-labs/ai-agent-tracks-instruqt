@@ -24,7 +24,7 @@ Investigate the given issue number thoroughly:
 1. Read the issue itself and its comments.
 2. Find and read any linked pull requests, their comments, and changed files.
 3. Search for related issues that show similar symptoms.
-4. Write your findings to a file named investigation-<issue-number>.md with these sections:
+4. Write your findings to a file named investigation-<issue-number>-baseline.md with these sections:
    - Summary
    - Probable Root Cause
    - Related Work (linked PRs, related issues)
@@ -69,7 +69,7 @@ def main():
         printed = len(messages)
 
     files = result.get("files", {})
-    report_name = f"investigation-{issue_number}.md"
+    report_name = f"investigation-{issue_number}-baseline.md"
     # Agent may write with or without a leading slash
     key = next((k for k in files if k.lstrip("/") == report_name), None)
     if key is not None:
