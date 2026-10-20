@@ -24,11 +24,15 @@ cp secrets/secrets.example.json secrets/secrets.json
 docker run -d --name vault -p 8200:8200 --cap-add=IPC_LOCK \
   -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
   hashicorp/vault:1.20
-docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
-  vault kv put secret/dapr/orderdb-password orderdb-password=s3cr3t-pa55w0rd
-docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
-  vault kv put secret/dapr/payments-api-key payments-api-key=pk-test-7f3a9
+# Seed Vault with the same secrets as secrets/secrets.json
+python3 -c 'import json; [print(k, v) for k, v in json.load(open("secrets/secrets.json")).items()]' | \
+  while read -r name value; do
+    docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
+      vault kv put "secret/dapr/$name" "$name=$value" </dev/null
+  done
 ```
+
+The secret names and values come from `secrets.example.json`, which is the single source for both stores.
 
 ## Demos
 
