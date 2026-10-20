@@ -120,11 +120,13 @@ TRACKS_SRC_DIR = os.environ.get("TRACKS_SRC_DIR") or os.path.expanduser("~/ai-ag
 SECRETS_BASE = os.path.join(TRACKS_SRC_DIR, "secrets")
 DEMO1 = "Demo1-ReadSecret"
 DEMO2 = "Demo2-Scoping"
-DENIED_STATUS = "<from Task 1>"
-DENIED_BODY = "<from Task 1>"
+DENIED_STATUS = "403"
+DENIED_BODY = "ERR_PERMISSION_DENIED"
+MISSING_STATUS = "500"
+MISSING_BODY = "ERR_SECRET_GET"
 ```
 
-`DENIED_STATUS` and `DENIED_BODY` carry Task 1's findings so challenge 3's suite and every later reference use one source of truth.
+These four carry Task 1's verified findings so challenge 3's suite, its assignment, and every later reference use one source of truth. Values confirmed empirically against daprd 1.18.7 — see `docs/superpowers/notes/2026-10-20-secret-scope-denial-findings.md`. The error wording is undocumented and version-sensitive, which is why the runtime version is pinned in `sandbox-setup.sh`.
 
 - [ ] **Step 2: Write the track README**
 
@@ -292,15 +294,17 @@ Walk `secretstore-local.yaml` field by field — `secretsFile`, `nestedSeparator
 
 **Interfaces:**
 - Consumes: `DENIED_STATUS`, `DENIED_BODY` from Task 2's variables file; the `secretstore` component.
-- Produces: apps `app-a` (port 5002, Dapr HTTP 3501) and `app-b` (port 5003, Dapr HTTP 3502), both exposing `GET /secret/{name}`; `config-app-b.yaml`, a `Configuration` resource with `defaultAccess: deny` and `allowedSecrets: ["payments-api-key"]` for store `secretstore`.
+- Produces: apps `app-a` (port 5002, Dapr HTTP 3501) and `app-b` (port 5003, Dapr HTTP 3502), both exposing `GET /secret/{name}`; `config-app-b.yaml`, a `Configuration` resource with `defaultAccess: deny` and `allowedSecrets: ["payments-api-key", "legacy-api-key"]` for store `secretstore`. `legacy-api-key` is deliberately **absent** from `secrets.json` — it exists only to make the denied-versus-missing comparison possible (see step 1).
 
 - [ ] **Step 1: Write the failing suite**
 
 Per language, four assertions:
 - `app-a` reads `orderdb-password` and gets `s3cr3t-pa55w0rd`.
-- `app-b` reads `payments-api-key` (its one allowed secret) and succeeds.
-- `app-b` reads `orderdb-password` and is **refused**, asserting `${DENIED_STATUS}` and `${DENIED_BODY}`.
-- `app-b` reads a secret that does not exist at all, asserting the response **differs** from the denial. This is Task 1 step 5 turned into a permanent regression test: if a future Dapr release collapses the two, this fails and the aha moment's loss is caught, not shipped.
+- `app-b` reads `payments-api-key` (an allowed secret that exists) and succeeds.
+- `app-b` reads `orderdb-password` — denied, and the secret exists — asserting `${DENIED_STATUS}` (403) and `${DENIED_BODY}` (`ERR_PERMISSION_DENIED`).
+- `app-b` reads `legacy-api-key` — **allowed but absent from the store** — asserting `${MISSING_STATUS}` (500) and `${MISSING_BODY}` (`ERR_SECRET_GET`), and that this **differs** from the denial. Task 1 step 5 turned into a permanent regression test: if a future Dapr release collapses the two, this fails and the loss of the aha moment is caught rather than shipped.
+
+**Why the missing secret must be an allowed one.** Task 1 established that the scope check runs *before* the store lookup, so a name that is both unknown and outside `allowedSecrets` also returns 403 `ERR_PERMISSION_DENIED`. Comparing denial against an unlisted unknown name would therefore compare 403 with 403 and prove nothing. The comparison only works when the missing secret is inside `allowedSecrets`, which is what `legacy-api-key` is for.
 
 - [ ] **Step 2: Run the suite to verify it fails**
 
@@ -322,7 +326,9 @@ Per Interfaces. Apply to `app-b` only, via `--config` on its `dapr run`.
 
 - [ ] **Step 7: Write the assignment**
 
-Build to the refusal: run App A, succeed; run App B without scoping, succeed; apply the Configuration resource; run App B again, refused. The expected-output block quotes Task 1's exact response. Then the inverse — `defaultAccess: allow` with `deniedSecrets` — so both directions are seen.
+Build to the refusal: run App A, succeed; run App B without scoping, succeed; apply the Configuration resource; run App B again, refused. The expected-output block quotes Task 1's exact response (403, `ERR_PERMISSION_DENIED`). Then the inverse — `defaultAccess: allow` with `deniedSecrets` — so both directions are seen.
+
+**One thing the assignment must not say.** Do not imply that a 403 tells you the secret exists. Because the scope check precedes the store lookup, an unknown name outside `allowedSecrets` returns the same 403 as a real secret the app is forbidden to read. That is a security property worth one honest sentence — scoping does not leak which secrets exist — not a detail to gloss over. A learner who infers "403 means it's there" has learned something false.
 
 - [ ] **Step 8: Write `README.md`, `notes.md`, `tabs.md`, `scripts/setup.sh`**
 
