@@ -12,17 +12,10 @@ In Instruqt the sandbox setup script prepares everything below for you. Use this
 
 ## Create `secrets.json`
 
-The local file secret store reads `secrets/secrets.json`, which is not committed. Copy the template and fill in the demo values:
+The local file secret store reads `secrets/secrets.json`, which is not committed. Copy the template, which already holds the fake demo values (the sandbox setup script does the same):
 
 ```bash
 cp secrets/secrets.example.json secrets/secrets.json
-```
-
-```json
-{
-  "orderdb-password": "s3cr3t-pa55w0rd",
-  "payments-api-key": "pk-test-7f3a9"
-}
 ```
 
 ## Start Vault (challenge 4 only)
