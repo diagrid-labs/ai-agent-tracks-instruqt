@@ -154,3 +154,11 @@ MAF/PrDigest/PrDigest.AppHost/secrets.json
 ####################
 .DS_Store
 Thumbs.db
+
+####################
+# Agent tooling
+####################
+# Git worktrees created by Claude Code, and the Superpowers SDD scratch
+# workspace (ledger, briefs, review packages). Both are local scratch.
+.claude/worktrees/
+.superpowers/
