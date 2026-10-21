@@ -10,6 +10,8 @@ In Instruqt the sandbox setup script prepares everything below for you. Use this
 - Docker, for the HashiCorp Vault container used in challenge 4
 - The runtime for the language you want to run: .NET SDK 10, Python 3.12 with [uv](https://docs.astral.sh/uv/), or Java 17 with Maven
 
+The shell commands below assume a POSIX shell (Git Bash, WSL, macOS or Linux) with `python3` available. The track itself runs on a Linux sandbox.
+
 ## Create `secrets.json`
 
 The local file secret store reads `secrets/secrets.json`, which is not committed. Copy the template, which already holds the fake demo values (the sandbox setup script does the same):
@@ -24,9 +26,11 @@ cp secrets/secrets.example.json secrets/secrets.json
 docker run -d --name vault -p 8200:8200 --cap-add=IPC_LOCK \
   -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
   hashicorp/vault:1.20
+# Wait until Vault answers, then seed it
+until docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault status >/dev/null 2>&1; do sleep 1; done
 # Seed Vault with the same secrets as secrets/secrets.json
 python3 -c 'import json; [print(k, v) for k, v in json.load(open("secrets/secrets.json")).items()]' | \
-  while read -r name value; do
+  tr -d '\r' | while read -r name value; do
     docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
       vault kv put "secret/dapr/$name" "$name=$value" </dev/null
   done
