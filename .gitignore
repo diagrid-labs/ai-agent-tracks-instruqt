@@ -153,6 +153,9 @@ MAF/PrDigest/PrDigest.AppHost/secrets.json
 # committed secrets/secrets.example.json is the template.
 secrets/**/secrets.json
 
+# Maven build output of the secrets demos.
+secrets/**/target/
+
 ####################
 # OS / Misc
 ####################
