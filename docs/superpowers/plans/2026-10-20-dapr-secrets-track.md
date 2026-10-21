@@ -306,6 +306,20 @@ Per language, four assertions:
 
 **Why the missing secret must be an allowed one.** Task 1 established that the scope check runs *before* the store lookup, so a name that is both unknown and outside `allowedSecrets` also returns 403 `ERR_PERMISSION_DENIED`. Comparing denial against an unlisted unknown name would therefore compare 403 with 403 and prove nothing. The comparison only works when the missing secret is inside `allowedSecrets`, which is what `legacy-api-key` is for.
 
+**Two response surfaces, and they do not use the same string — do not conflate them.**
+Task 3 gave the demo apps their own error shape, so challenge 3 can show the refusal at either level and the suite must assert each against the right constant:
+
+| Surface | Status | Error string |
+|---|---|---|
+| Raw sidecar (`curl :3502/v1.0/secrets/...`) | `${DENIED_STATUS}` 403 | `${DENIED_BODY}` → `ERR_PERMISSION_DENIED` |
+| Demo app endpoint (`curl :5003/secret/...`) | 403 | `PERMISSION_DENIED` (no `ERR_` prefix) |
+| Raw sidecar, allowed-but-missing | `${MISSING_STATUS}` 500 | `${MISSING_BODY}` → `ERR_SECRET_GET` |
+| Demo app endpoint, allowed-but-missing | 500 | `INTERNAL` |
+
+Note that `ERR_PERMISSION_DENIED` *contains* `PERMISSION_DENIED`, so a sloppy `contains` assertion passes against the wrong surface and proves nothing. Add `APP_DENIED_ERROR = "PERMISSION_DENIED"` and `APP_MISSING_ERROR = "INTERNAL"` to `variables/dapr_secrets.py` and assert each surface with its own constant.
+
+**This challenge owns the denial regression guard.** Task 3 verified the 403 path by hand in all three languages but could not automate it, because triggering a denial needs the scoping config that challenge 3 is the first to introduce. Until this suite lands, the 403 branch of all three apps has no automated coverage. Do not drop it.
+
 - [ ] **Step 2: Run the suite to verify it fails**
 
 Expected: FAIL — `Demo2-Scoping` does not exist.
