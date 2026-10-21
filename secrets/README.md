@@ -56,10 +56,13 @@ The secret names and values come from `secrets.example.json`, which is the singl
 
 | Folder | Used in | What it shows |
 |---|---|---|
-| `Demo1-ReadSecret` | Challenges 1, 2 and 4 | One app reads a secret from the `secretstore` component |
+| `Demo1-ReadSecret` | Challenges 1 and 2 | One app reads a secret from the `secretstore` component |
 | `Demo2-Scoping` | Challenge 3 | Two apps, one allowed to read a secret and one refused |
+| `Demo3-SwapProvider` | Challenge 4 | The unchanged `Demo1-ReadSecret` app, run with a `secretstore` component that points at HashiCorp Vault instead of a file |
 
-Each language has its own folder (`dotnet/`, `python/`, `java/`) containing both demos and a `resources/` folder with the component YAML.
+Each language has its own folder (`dotnet/`, `python/`, `java/`) containing all three demos and a `resources/` folder with the component YAML.
+
+`Demo3-SwapProvider` has no application code. Its `dapr.yaml` starts `../Demo1-ReadSecret` with its own `resources` folder, where `secretstore-vault.yaml` is the `secretstore` component. It is not in the shared `resources` folder because a sidecar does not start when two components there have the same name.
 
 ## Run a demo
 
@@ -76,4 +79,4 @@ cd secrets/python/Demo1-ReadSecret && dapr run -f .
 cd secrets/java/Demo1-ReadSecret && dapr run -f .
 ```
 
-Replace `Demo1-ReadSecret` with `Demo2-Scoping` for the scoping demo.
+Replace `Demo1-ReadSecret` with `Demo2-Scoping` for the scoping demo, or with `Demo3-SwapProvider` for the Vault demo (start Vault first, see above).
