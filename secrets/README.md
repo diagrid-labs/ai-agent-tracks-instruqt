@@ -23,17 +23,31 @@ cp secrets/secrets.example.json secrets/secrets.json
 ## Start Vault (challenge 4 only)
 
 ```bash
+# Dev-mode Vault keeps nothing across restarts, so removing any existing
+# container first makes this block safe to run again.
+docker rm -f vault >/dev/null 2>&1 || true
 docker run -d --name vault -p 8200:8200 --cap-add=IPC_LOCK \
   -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
   hashicorp/vault:1.20
-# Wait until Vault answers, then seed it
-until docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault status >/dev/null 2>&1; do sleep 1; done
-# Seed Vault with the same secrets as secrets/secrets.json
-python3 -c 'import json; [print(k, v) for k, v in json.load(open("secrets/secrets.json")).items()]' | \
-  tr -d '\r' | while read -r name value; do
-    docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
-      vault kv put "secret/dapr/$name" "$name=$value" </dev/null
-  done
+# Wait up to 30 seconds for Vault to answer, then seed it
+vault_ready=false
+for _ in $(seq 1 30); do
+  if docker exec -e VAULT_ADDR=http://127.0.0.1:8200 vault vault status >/dev/null 2>&1; then
+    vault_ready=true
+    break
+  fi
+  sleep 1
+done
+if [ "$vault_ready" != "true" ]; then
+  echo "ERROR: Vault did not become ready within 30 seconds. Check 'docker logs vault'." >&2
+else
+  # Seed Vault with the same secrets as secrets/secrets.json
+  python3 -c 'import json; [print(k, v) for k, v in json.load(open("secrets/secrets.json")).items()]' | \
+    tr -d '\r' | while read -r name value; do
+      docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
+        vault kv put "secret/dapr/$name" "$name=$value" </dev/null
+    done
+fi
 ```
 
 The secret names and values come from `secrets.example.json`, which is the single source for both stores.
