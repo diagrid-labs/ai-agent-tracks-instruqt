@@ -333,7 +333,11 @@ so all six tracks end up consistent.
     README.md                how to run these demos locally, outside Instruqt
     Demo1-<slug>/            one folder per demo, numbered to match the challenge that uses it
     Demo2-<slug>/
+    Demo<N>-SwapProvider/    only where a challenge swaps providers (see below)
     resources/               Dapr component YAML shared by the demos in this language folder
+  <data-folders>/            language-agnostic, one level up from the language folders and
+                             shared by all three (the secrets track has `secrets/` holding
+                             `secrets.example.json` and `nested-demo/`)
 ```
 
 - Folder naming follows the existing `Demo<N>-<Slug>` convention in
@@ -342,8 +346,18 @@ so all six tracks end up consistent.
   below it.)*
 - Component YAML lives beside the code it configures, because the YAML *is* the subject
   matter in act 2 and the learner opens it in the editor tab.
-- Where a challenge swaps providers, both component files ship, named for their provider
-  (`statestore-redis.yaml`, `statestore-postgres.yaml`).
+- Where a challenge swaps providers, the swap target lives in its own
+  `Demo<N>-SwapProvider/` folder, not beside the original component. Its `resources/`
+  holds the replacement component under the **same** `metadata.name` as the original
+  (`secretstore`, `statestore`, `configstore`), and its `dapr.yaml` points `appDirPath`
+  back at the unchanged app in the earlier demo folder. The app keeps asking for the same
+  component name, so only YAML differs: that is the lesson. Two component files with one
+  name cannot sit in one `resources/` folder (daprd refuses to load them), and two
+  different names would force the app to change, so the two providers are kept in separate
+  resource folders and the learner points the same app at either one.
+- Language-agnostic data the demos share, such as a seed file or sample input, sits once
+  beside the language folders (for example `secrets/secrets.example.json` and
+  `secrets/nested-demo/`) rather than being copied into each language.
 - Real secrets are never committed. The Conversation track's `secrets.json` is generated
   at sandbox launch from the Instruqt sandbox secret and is git-ignored.
 
@@ -410,8 +424,21 @@ For each track:
 3. `tools/track-tester/ci/setup-<track>.sh` — reproduces the sandbox in CI.
 4. `.github/workflows/test-<track>.yml` — daily schedule, `workflow_dispatch`, and PRs
    touching the track or the harness; a doc-sync job plus a per-language matrix
-   (dotnet, python, java); each leg runs every challenge even if an earlier one fails,
-   and failures feed the shared `drift-report` issue.
+   (dotnet, python, java) plus a `shared` leg; each leg runs every challenge even if an
+   earlier one fails, and failures feed the shared `drift-report` issue.
+
+   **The `shared` leg is required whenever a suite has a test without a language tag.**
+   Robot's `--include <lang>` selects only tests carrying that tag, so an untagged test
+   (a negative control, a value-level proof, a port-free or component-loading check) runs in
+   no language leg at all, and the count guard cannot notice because its dry run applies the
+   same filter. Add one matrix value, `shared`, that runs
+   `--exclude dotnet --exclude python --exclude java`, with the same Dapr sandbox setup
+   and the same count guard. It needs no language toolchain. Each language leg and the
+   `shared` leg together cover every test exactly once. Where every test in every suite
+   carries exactly one language tag, as in `dapr-workflow`, the `shared` leg is not needed.
+   Also give the slowest leg (Java) a larger `timeout-minutes` and record a timeout with an
+   `if: cancelled()` step, because the pre-test failure recorder runs before the test step
+   and cannot see a timeout during it.
 
 Existing harness rules that are **not** to be re-litigated: run `robot` from inside
 `tools/track-tester/`; keep the `# doc-sync coverage` comment block accurate for commands
