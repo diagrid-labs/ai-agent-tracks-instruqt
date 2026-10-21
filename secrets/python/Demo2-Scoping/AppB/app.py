@@ -1,5 +1,4 @@
 import grpc
-import uvicorn
 from dapr.clients import DaprClient
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,7 +9,8 @@ app = FastAPI()
 
 
 # AppA and AppB have exactly the same code. Only the sidecar next to each of them is configured
-# differently, and that decides which secrets each one may read.
+# differently, and that decides which secrets each one may read. Even the port comes from
+# dapr.yaml (uvicorn --port), not from the code.
 @app.get("/secret/{name}")
 def get_secret(name: str):
     try:
@@ -29,7 +29,3 @@ def failure(e: grpc.RpcError, name: str):
     code = e.code()
     status = 403 if code == grpc.StatusCode.PERMISSION_DENIED else 500
     return JSONResponse(status_code=status, content={"name": name, "error": code.name})
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=5003)
