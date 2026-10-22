@@ -95,6 +95,20 @@ changes.
 budget, plus 123 MB of disk for the scheduler's etcd data. Input to the §7.2 `resources` sizing
 that the lab plan owns.
 
+## Measurements
+
+Recorded as spec §9.5 and §10 ask, rather than assumed. Appended as each task produces a number.
+
+| Measurement | Value | From |
+| --- | --- | --- |
+| `diagrid/university-base` uncompressed | **1.94 GB** (2.08 GB on-disk with metadata) | Task 2 |
+| Control plane ready after container start | **816 ms** | Task 2 |
+| `placement` / `scheduler` resident memory | 51 MB / 90 MB (~141 MB) | Task 1 |
+| Scheduler etcd data directory | 123 MB | Task 1 |
+
+Four SDKs in under 2 GB is within the range spec §11 anticipated; Instruqt's image streaming is
+what makes it cheap to start, which is why the Docker Hub repos must be public (§7.5.1).
+
 ## For the tracks that follow
 
 The secrets track stores no jobs, so the scheduler's data directory only has to be *somewhere
