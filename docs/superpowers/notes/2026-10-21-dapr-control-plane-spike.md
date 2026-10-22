@@ -105,9 +105,38 @@ Recorded as spec §9.5 and §10 ask, rather than assumed. Appended as each task 
 | Control plane ready after container start | **816 ms** | Task 2 |
 | `placement` / `scheduler` resident memory | 51 MB / 90 MB (~141 MB) | Task 1 |
 | Scheduler etcd data directory | 123 MB | Task 1 |
+| `diagrid/university-secrets` on-disk | 2.23 GB (+150 MB over base) | Task 3 |
+| Warmed caches | nuget 29 MB, uv 46 MB, m2 76 MB | Task 3 |
+| Secrets layer build | 74 s | Task 3 |
 
 Four SDKs in under 2 GB is within the range spec §11 anticipated; Instruqt's image streaming is
 what makes it cheap to start, which is why the Docker Hub repos must be public (§7.5.1).
+
+### First-build time, warm cache vs cold — spec §10 item 2
+
+Demo1-ReadSecret, in a fresh container, repo copied in. "Cold" is the same build against the
+base image, whose caches are empty.
+
+| Language | Warm | Cold | Saved |
+| --- | --- | --- | --- |
+| .NET (`dotnet build`) | 7 s | 9 s | 2 s |
+| Python (`uv sync`) | 4 s | 4 s | **0 s** |
+| Java (`mvn -DskipTests package`) | 4 s | 41 s | **37 s** |
+| all three | 15 s | 54 s | 39 s |
+
+**The honest reading: the warm cache earns its place for Maven, and barely registers for the
+other two.** Spec §10 item 2 sets the bar at "saving minutes"; measured here, only Java comes
+close, and Python gains nothing at all because `uv` resolves these small wheel sets about as fast
+as it reads them from disk.
+
+Two caveats before anyone acts on this. These numbers come from a developer machine on a fast
+connection — Instruqt's network is the one that matters, and a slower link moves every "cold"
+figure up while leaving "warm" flat, so the cache is worth strictly more there than here. And the
+m2 cache is the largest of the three (76 MB) precisely because Maven is the one that benefits.
+
+What it argues for, when someone revisits this: keep the warm layer, but treat the per-challenge
+`setup.sh` pre-builds (spec §9.5) as the thing to cut first — at 15 s warm for all three
+languages, a pre-build no longer buys a learner anything a page load does not already cover.
 
 ## For the tracks that follow
 

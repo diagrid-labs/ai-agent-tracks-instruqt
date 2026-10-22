@@ -12,7 +12,16 @@ export MSYS2_ARG_CONV_EXCL='*'
 IMAGE_BASE="${IMAGE_BASE:-diagrid/university-base:dev}"
 IMAGE_SECRETS="${IMAGE_SECRETS:-diagrid/university-secrets:dev}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export IMAGE_BASE IMAGE_SECRETS REPO_ROOT
+
+# `docker -v` needs a path the Docker daemon understands. Under Git Bash that is C:/dev/... ,
+# not the /c/dev/... that pwd reports; on Linux and in CI the two are the same string.
+if command -v cygpath >/dev/null 2>&1; then
+    REPO_ROOT_HOST="$(cygpath -m "$REPO_ROOT")"
+else
+    REPO_ROOT_HOST="$REPO_ROOT"
+fi
+
+export IMAGE_BASE IMAGE_SECRETS REPO_ROOT REPO_ROOT_HOST
 
 # The versions the image claims to carry. One owner: images/versions.env.
 if [ -f "$REPO_ROOT/images/versions.env" ]; then
