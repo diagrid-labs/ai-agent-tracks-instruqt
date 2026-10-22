@@ -100,6 +100,16 @@ for bin in daprd placement scheduler; do
         docker exec "$CONTAINER" sh -c "test -x /root/.dapr/bin/$bin"
 done
 
+# --- 6b. no CRLF in the shipped scripts ---------------------------------------------------------
+# core.autocrlf=true (the Windows default) rewrites these on checkout, and a CRLF shebang fails
+# inside the image with "/usr/bin/env: 'bash\r': No such file or directory" - i.e. the workstation
+# does not start at all. .gitattributes pins eol=lf; this proves it held all the way into the image.
+CR="$(printf '\r')"
+check_ok "entrypoint script has no CRLF line endings" -- \
+    docker exec "$CONTAINER" sh -c "! grep -q '$CR' /usr/local/bin/start-control-plane.sh"
+check_ok "profile.d cache script has no CRLF line endings" -- \
+    docker exec "$CONTAINER" sh -c "! grep -q '$CR' /etc/profile.d/dapr-track-caches.sh"
+
 # --- 7. the entrypoint actually brought the control plane up (Task 1, §9.1) ---------------------
 # A TCP connect, not a health endpoint: both services speak gRPC, and "the port is listening" is
 # what daprd needs. Readiness proper (healthz 204) is asserted in Task 4 with a sidecar running.
