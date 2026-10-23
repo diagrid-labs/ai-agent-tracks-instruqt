@@ -6,7 +6,7 @@ CI drift check keeps the two vendored copies in sync).
 
 from __future__ import annotations
 
-# Claude model used for the analysis step; override per run with $LLM_MODEL.
-DEFAULT_LLM_MODEL = "claude-sonnet-4-6"
+# OpenAI model used for the analysis step; override per run with $LLM_MODEL.
+DEFAULT_LLM_MODEL = "gpt-4.1-mini"
 # Max output tokens for the analysis step; override with $LLM_MAX_TOKENS.
 DEFAULT_MAX_TOKENS = 8000

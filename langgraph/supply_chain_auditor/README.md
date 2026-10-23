@@ -8,14 +8,14 @@ slipped into an update whose changelog says something innocent.
 It's built as an **explicit, staged [LangGraph](https://www.langchain.com/langgraph)
 pipeline** run as a durable Dapr Workflow via the
 [Diagrid `diagrid`](https://pypi.org/project/diagrid/) adapter, and uses
-[Claude](https://www.anthropic.com/claude) for the analysis step.
+[OpenAI](https://platform.openai.com/docs/models) (`gpt-4.1-mini` by default) for the analysis step.
 
 ## How it works
 
 ```
 START → gather_evidence → ┬─ analyze  ─┐→ render_report → END
                           └─ finalize ─┘
-        (resolve repo,      (Claude judges    (Markdown report;
+        (resolve repo,      (LLM judges       (Markdown report;
          fetch notes+diff,    notes vs diff,    app.py posts the
          run heuristics)      reconciled)       PR comment)
 ```
@@ -23,7 +23,7 @@ START → gather_evidence → ┬─ analyze  ─┐→ render_report → END
 - **`graph.py`** — the pipeline. Only `analyze` calls the LLM; every other node
   is plain Python. Each node runs as a durable Dapr Workflow activity, so a crash after the LLM
   `analyze` node resumes at `render_report` — Dapr replays `gather_evidence` and
-  `analyze` from durable state, so neither the GitHub fetch nor the Claude call is
+  `analyze` from durable state, so neither the GitHub fetch nor the LLM call is
   repeated. See "Crash-and-Resume" below.
 - **`auditor_core/`** — the audit logic: parsing the bump, resolving the source
   repo, GitHub fetching, the red-flag heuristics, the untrusted-content
@@ -58,9 +58,9 @@ Create a local `.env` with these keys:
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes | — | Claude API key for the analysis step |
+| `OPENAI_API_KEY` | yes | — | OpenAI API key for the analysis step |
 | `GITHUB_TOKEN` | no | — | Enables posting the PR comment + authenticated reads; **dry-run without it** |
-| `LLM_MODEL` | no | `claude-sonnet-4-6` | Chat model (`claude-opus-4-8` for deeper analysis) |
+| `LLM_MODEL` | no | `gpt-4.1-mini` | Chat model (`gpt-4.1` for deeper analysis) |
 | `LLM_MAX_TOKENS` | no | `8000` | Max output tokens |
 | `LOG_LEVEL` | no | `INFO` | Logging verbosity |
 | `DAPR_GRPC_ENDPOINT` | no | — | Catalyst gRPC gateway (CI; lets the adapter skip a local sidecar) |
@@ -84,7 +84,7 @@ or see [docs.diagrid.io](https://docs.diagrid.io)), then:
 uv sync
 diagrid login                                                   # once
 # first time only: diagrid project create supply-chain-auditor --enable-agent-infrastructure
-ANTHROPIC_API_KEY=sk-ant-... \
+OPENAI_API_KEY=sk-... \
 PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
 diagrid dev run --file supply-chain-auditor-langgraph.yaml --approve
 ```
@@ -113,7 +113,7 @@ Dependabot PRs, connects to Catalyst via the `DAPR_GRPC_ENDPOINT` /
 with the workflow's `GITHUB_TOKEN`.
 
 > **Dependabot secrets:** workflows triggered by Dependabot PRs do **not** receive
-> your normal Actions secrets. Add `ANTHROPIC_API_KEY`, `DAPR_GRPC_ENDPOINT`, and
+> your normal Actions secrets. Add `OPENAI_API_KEY`, `DAPR_GRPC_ENDPOINT`, and
 > `DAPR_API_TOKEN` under **Settings → Secrets and variables → Dependabot** (not
 > Actions), or they'll be empty at runtime. `GITHUB_TOKEN` is still provided.
 
@@ -121,7 +121,7 @@ with the workflow's `GITHUB_TOKEN`.
 
 This is the durability lesson: the workflow is interrupted mid-run by a **real process
 crash**, and on restart it resumes from durable Redis state — **without re-invoking the
-Claude `analyze` call that already completed.** An append-only *stage ledger*
+LLM `analyze` call that already completed.** An append-only *stage ledger*
 (`audit-ledger.log`) makes this provable.
 
 ### How it works
@@ -134,7 +134,7 @@ Claude `analyze` call that already completed.** An append-only *stage ledger*
   ```
 
   By the time `render_report` runs, `gather_evidence` and `analyze` have each recorded a
-  ledger line (count == 2), so the process dies **after** the Claude call has completed
+  ledger line (count == 2), so the process dies **after** the LLM call has completed
   and been checkpointed. There is no environment variable or marker file — *you* are the
   switch. (Because it ships armed, a normal run also crashes here; comment it out for a
   clean, non-crashing run.)
@@ -163,7 +163,7 @@ uv sync                           # install dependencies
 docker ps | grep dapr_redis       # confirm Redis is up
 ```
 
-Provide your `ANTHROPIC_API_KEY` — either in a local `.env` (see [Configuration](#configuration),
+Provide your `OPENAI_API_KEY` — either in a local `.env` (see [Configuration](#configuration),
 `app.py` calls `load_dotenv()`) or inline on the command as shown below. `GITHUB_TOKEN` is
 optional; without it the PR comment is a dry-run (printed, not posted), which is fine for the demo.
 
@@ -175,7 +175,7 @@ the `analyze` branch — the LLM path — is taken):
 
 ```bash
 export AUDIT_OUTPUT_DIR="$PWD/audit-out"
-ANTHROPIC_API_KEY=sk-ant-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
+OPENAI_API_KEY=sk-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
   uv run dapr run --app-id supply-chain-auditor-langgraph --resources-path ./resources -- python app.py
 ```
 
@@ -200,14 +200,14 @@ Re-run the **exact same command** (re-export `AUDIT_OUTPUT_DIR` if you opened a 
 
 ```bash
 export AUDIT_OUTPUT_DIR="$PWD/audit-out"
-ANTHROPIC_API_KEY=sk-ant-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
+OPENAI_API_KEY=sk-... PR_REPO=dapr/dapr-agents PR_NUMBER=635 DEP_ECOSYSTEM=pip \
   uv run dapr run --app-id supply-chain-auditor-langgraph --resources-path ./resources -- python app.py
 ```
 
 `app.py` derives the same deterministic instance ID, finds it still in flight in Redis, and polls
 it to completion — it does **not** schedule a new run. Dapr rehydrates instance
 `audit-dapr-dapr-agents-635-<pkg>`, replays `gather_evidence` + `analyze` from history (no
-re-fetch, no second Claude call), and runs only `render_report`. This time the workflow reaches
+re-fetch, no second LLM call), and runs only `render_report`. This time the workflow reaches
 **Completed**, the Markdown report is rendered, and the PR comment is posted (or dry-run printed).
 
 ### Verify — durability, proven
@@ -219,7 +219,7 @@ cat "$AUDIT_OUTPUT_DIR/audit-ledger.log"
 Confirm:
 
 1. **Exactly three lines — `gather_evidence`, `analyze`, `render_report`, each once.** The
-   `analyze` line was written on run 1 and **not** repeated on resume: the Claude call ran
+   `analyze` line was written on run 1 and **not** repeated on resume: the LLM call ran
    exactly once.
 2. **A clear timestamp gap** before the `render_report` line — the wall-clock cost of the
    crash + restart, inside a single logical workflow run.

@@ -22,7 +22,7 @@ from auditor_core import config, prompt, reconcile, redflags, report
 from auditor_core import evidence as evidence_mod
 from auditor_core.github_client import GitHubClient
 from auditor_core.models import DependencyBump, Evidence, Finding, LLMVerdict
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -39,9 +39,9 @@ class AuditState(TypedDict, total=False):
     report_md: str
 
 
-def build_llm() -> ChatAnthropic:
-    """Build the Claude chat model (model id overridable via LLM_MODEL)."""
-    return ChatAnthropic(
+def build_llm() -> ChatOpenAI:
+    """Build the OpenAI chat model (model id overridable via LLM_MODEL)."""
+    return ChatOpenAI(
         model=os.environ.get("LLM_MODEL", config.DEFAULT_LLM_MODEL),
         max_tokens=int(os.environ.get("LLM_MAX_TOKENS", config.DEFAULT_MAX_TOKENS)),
     )
@@ -125,9 +125,9 @@ def render_report(state: AuditState) -> dict:
 
     # 💥 DURABILITY DEMO — armed by default. By the time render_report runs, both
     # gather_evidence and analyze have each recorded a ledger line (count == 2), so this
-    # crashes the process AFTER the analyze (Claude) call has completed and checkpointed
+    # crashes the process AFTER the analyze (LLM) call has completed and checkpointed
     # to Redis. Comment this line out and re-run: Dapr rehydrates the workflow, replays
-    # gather_evidence + analyze from history (NO re-fetch, NO second Claude call), and
+    # gather_evidence + analyze from history (NO re-fetch, NO second LLM call), and
     # only render_report re-runs.
     if ledger.count() >= 2: os._exit(1)     # ← comment out for the resume run
 

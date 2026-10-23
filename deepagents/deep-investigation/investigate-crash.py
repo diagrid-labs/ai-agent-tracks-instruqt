@@ -52,7 +52,7 @@ You MUST investigate the given issue number by calling tools in EXACTLY this ord
 2. Call get_comments to read its comments.
 3. Call list_linked_prs, then get_issue and get_comments on any linked pull request.
 4. Call search_related_issues to find issues that show similar symptoms.
-5. Write your findings to a file named investigation-<issue-number>.md with these sections:
+5. Write your findings to a file named investigation-<issue-number>-crash.md with these sections:
    - Summary
    - Probable Root Cause
    - Related Work (linked PRs, related issues)
@@ -73,7 +73,7 @@ async def main():
     issue_number = args.issue
 
     agent = create_deep_agent(
-        model="openai:gpt-4o-mini",
+        model="openai:gpt-4.1-mini",
         tools=TOOLS,
         system_prompt=SYSTEM_PROMPT,
         name="issue-investigator",
@@ -189,7 +189,7 @@ def write_report_from_state(wf_state, issue_number: str):
 
 def write_report(issue_number: str, output: dict):
     files = output.get("files", {})
-    report_name = f"investigation-{issue_number}.md"
+    report_name = f"investigation-{issue_number}-crash.md"
     key = next((k for k in files if k.lstrip("/") == report_name), None)
     if key is not None:
         with open(report_name, "w", encoding="utf-8") as f:
