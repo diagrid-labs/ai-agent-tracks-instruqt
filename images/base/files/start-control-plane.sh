@@ -36,7 +36,7 @@ wait_for_port() {
 
 mkdir -p "$SCHEDULER_DATA_DIR" "$LOG_DIR"
 
-"$DAPR_BIN/placement" >"$LOG_DIR/placement.log" 2>&1 &
+"$DAPR_BIN/placement" --port "$PLACEMENT_PORT" >"$LOG_DIR/placement.log" 2>&1 &
 
 # The scheduler must be moved off 8080/9090: placement and scheduler BOTH default to those for
 # healthz and metrics, so the second one to start otherwise dies with

@@ -24,8 +24,8 @@ if ! docker run -d --name "$CONTAINER" "$IMAGE" sleep infinity >/dev/null 2>&1; 
     fail "could not start $IMAGE (is it built? run the Task 2 build first)"
 fi
 
-# The entrypoint waits for the control plane before exec'ing the command, so a container that is
-# still 'created' after 60s never got there.
+# Note this says nothing about the control plane: State.Running becomes true as soon as the
+# container starts, while the entrypoint is still inside its own wait loop. Check 7 polls.
 for _ in $(seq 1 60); do
     [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ] && break
     sleep 1
@@ -77,8 +77,12 @@ check_eq "mvn resolves localRepository to the shared cache" "/opt/caches/m2" \
     "$(dex 'mvn -q help:evaluate -Dexpression=settings.localRepository -DforceStdout 2>/dev/null | tail -1')"
 
 # --- 3. the cache root exists and is world-readable --------------------------------------------
-# Readable by every user, so switching the workstation to `run_as` later cannot silently
-# orphan the warm caches (design §9.5).
+# Readable by every user, so the caches are not tied to the user that warmed them.
+#
+# This is NOT the same as the workstation being ready for `run_as` (design §9.5). The Dapr
+# runtime lives in /root/.dapr, and /root is mode 0700, so a non-root user could not reach
+# daprd, placement or scheduler and `dapr run` would fail outright. Switching to a named user
+# means moving the Dapr install out of /root as well - these checks do not cover that.
 for cache in nuget uv m2 npm; do
     check_ok "/opt/caches/$cache exists and is world-readable" -- \
         docker exec "$CONTAINER" sh -c "test -d /opt/caches/$cache && test -r /opt/caches/$cache"
@@ -113,10 +117,28 @@ check_ok "profile.d cache script has no CRLF line endings" -- \
 # --- 7. the entrypoint actually brought the control plane up (Task 1, §9.1) ---------------------
 # A TCP connect, not a health endpoint: both services speak gRPC, and "the port is listening" is
 # what daprd needs. Readiness proper (healthz 204) is asserted in Task 4 with a sidecar running.
+# Polls, because the container is Running well before the entrypoint has finished waiting for
+# these two. A single unretried connect passes only by luck - here it is luck of ~45 docker exec
+# round-trips having run first - and would flake on a loaded CI runner.
+wait_for_port_in_container() {
+    local port="$1" i
+    for ((i = 0; i < 30; i++)); do
+        if docker exec "$CONTAINER" bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
 for port_name in "50005 placement" "50006 scheduler"; do
     set -- $port_name
-    check_ok "control plane: $2 is listening on $1" -- \
-        docker exec "$CONTAINER" bash -c "exec 3<>/dev/tcp/127.0.0.1/$1"
+    if wait_for_port_in_container "$1"; then
+        pass "control plane: $2 is listening on $1"
+    else
+        echo "--- $2 log ---" >&2
+        docker exec "$CONTAINER" sh -c "tail -20 /var/log/$2.log" >&2 2>/dev/null || true
+        fail "control plane: $2 never listened on $1 within 30s"
+    fi
 done
 # Both must survive: placement and scheduler default to the same healthz/metrics ports, so a
 # naive entrypoint starts both and silently loses the second (Task 1).

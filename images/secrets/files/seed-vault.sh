@@ -5,9 +5,8 @@
 # Env:   VAULT_ADDR   default http://vault:8200
 #        VAULT_TOKEN  default root           (dev mode)
 #
-# The lab's setup step calls this. It talks to Vault's HTTP API with curl rather than
-# `docker exec ... vault kv put`, because the v2 workstation has no Docker and no vault binary -
-# and because the track already teaches with curl, so nothing new is introduced to the learner.
+# The lab's setup step calls this. It talks to Vault's HTTP API rather than
+# `docker exec ... vault kv put`, because the v2 workstation has no Docker and no vault binary.
 #
 # Secrets are written to secret/dapr/<name> - KV v2 with the "dapr" prefix - which is what the
 # Dapr Vault secret store reads by default. That default is precisely why
@@ -42,28 +41,59 @@ if [ "$ready" != true ]; then
     exit 1
 fi
 
-# Read name/value pairs from the JSON. python3 rather than jq: it is already in the image for the
-# Python demos, and this keeps the base image one package smaller.
-# A tab separator survives values containing spaces, which `read name value` would otherwise trim.
-count=0
-while IFS="$(printf '\t')" read -r name value; do
-    [ -n "$name" ] || continue
+# Parse AND write in one checked process.
+#
+# This used to be a shell `while read` loop fed by python3 through process substitution. Two bugs
+# lived there, both silent, both exit 0: a parse error left Vault empty while the script reported
+# success, because process substitution hides the producer's exit status from `set -e`; and any
+# value containing a newline was truncated at the newline, with its tail written as a secret of
+# its own. A line-delimited format simply cannot carry these values, so there is no delimiter to
+# fix - the loop had to go.
+#
+# python3 is already required here to read the JSON, and it is in the base image for the Python
+# demos, so doing the HTTP from the same process costs nothing and makes every failure loud.
+python3 - "$SECRETS_JSON" "$VAULT_ADDR" "$VAULT_TOKEN" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+secrets_path, vault_addr, vault_token = sys.argv[1:4]
+
+try:
+    with open(secrets_path, encoding="utf-8") as fh:
+        secrets = json.load(fh)
+except (OSError, ValueError) as exc:
+    sys.exit(f"ERROR: could not read {secrets_path} as JSON: {exc}")
+
+if not isinstance(secrets, dict):
+    sys.exit(
+        f"ERROR: {secrets_path} must be a JSON object of name/value pairs, "
+        f"got {type(secrets).__name__}."
+    )
+if not secrets:
+    sys.exit(f"ERROR: {secrets_path} contains no secrets.")
+
+for name, value in secrets.items():
+    # Vault stores strings; a non-string in the template is a template bug, not something to
+    # silently coerce into a Python repr.
+    if not isinstance(value, str):
+        sys.exit(f"ERROR: secret {name!r} must be a string, got {type(value).__name__}.")
+
     # Writing the same key again overwrites it, so re-running this script is a no-op rather than
     # a duplicate - which is what makes a relaunched lab safe.
-    printf '%s' "$value" \
-        | python3 -c 'import json,sys; print(json.dumps({"data": {sys.argv[1]: sys.stdin.read()}}))' "$name" \
-        | curl -sf -o /dev/null -X POST \
-            -H "X-Vault-Token: $VAULT_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data-binary @- \
-            "$VAULT_ADDR/v1/secret/data/dapr/$name" \
-        || { echo "ERROR: could not write secret/dapr/$name to $VAULT_ADDR" >&2; exit 1; }
-    count=$((count + 1))
-done < <(python3 -c '
-import json, sys
-with open(sys.argv[1]) as fh:
-    for k, v in json.load(fh).items():
-        print(f"{k}\t{v}")
-' "$SECRETS_JSON")
+    request = urllib.request.Request(
+        # quote() so a name with a space or slash is a bad-request we can read, not a mangled URL.
+        f"{vault_addr}/v1/secret/data/dapr/{urllib.parse.quote(name, safe='')}",
+        data=json.dumps({"data": {name: value}}).encode("utf-8"),
+        headers={"X-Vault-Token": vault_token, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(request, timeout=30).close()
+    except urllib.error.URLError as exc:
+        sys.exit(f"ERROR: could not write secret/dapr/{name} to {vault_addr}: {exc}")
 
-echo "Seeded $count secret(s) into $VAULT_ADDR under secret/dapr/"
+print(f"Seeded {len(secrets)} secret(s) into {vault_addr} under secret/dapr/")
+PY

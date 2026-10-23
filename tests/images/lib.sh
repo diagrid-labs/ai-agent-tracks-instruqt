@@ -123,14 +123,31 @@ stop_dapr() {
     # The bracket is load-bearing: `pkill -f "dapr run"` also matches the very shell running it
     # (its own command line contains the pattern), so the shell kills itself and every later
     # pkill in the list never runs. `[d]apr run` matches the real process and not this command.
+    # java and python are matched broadly on purpose. The Python demo's process is `python
+    # app.py` (uvicorn runs in-process, so no "uvicorn" appears in its cmdline) and Maven's
+    # spring-boot plugin FORKS the application JVM, whose cmdline carries no "spring-boot" -
+    # so the specific patterns miss exactly the two apps that squat ports 5001/3500. Nothing
+    # else in this container runs java or python.
     docker exec "$WS" sh -c '
         pkill -f "[d]apr run" || true
         pkill -f "[d]aprd" || true
-        pkill -f "[d]otnet run" || true
-        pkill -f "[s]pring-boot" || true
-        pkill -f "[u]vicorn" || true
+        pkill -f "[d]otnet" || true
+        pkill -f "[j]ava" || true
+        pkill -f "[p]ython" || true
     ' >/dev/null 2>&1 || true
-    sleep 3
+
+    # Verified, not assumed. All three languages bind the same appPort 5001 and daprHTTPPort
+    # 3500, so a survivor would make the NEXT language's checks pass against the PREVIOUS
+    # language's app - every assertion green, nothing actually tested.
+    local i
+    for ((i = 0; i < 30; i++)); do
+        if ! docker exec "$WS" curl -sf -o /dev/null --max-time 2 http://localhost:5001/secret/orderdb-password 2>/dev/null \
+           && ! docker exec "$WS" curl -s -o /dev/null --max-time 2 http://localhost:3500/v1.0/healthz 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    fail "stop_dapr: an app or sidecar still answered on 5001/3500 after 30s; the next language would test the wrong process"
 }
 
 # Polls rather than sleeping a fixed time: the lab starts these containers in parallel, so a

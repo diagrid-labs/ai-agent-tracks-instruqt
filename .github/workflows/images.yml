@@ -88,6 +88,20 @@ jobs:
           IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
         run: bash tests/images/caches-secrets.sh
 
+      # The two suites above never start a sidecar, so without these the weekly build could go
+      # green on an image whose sidecar never becomes ready. These are the only place that
+      # /v1.0/healthz == 204, the Vault seed and its re-run, and the redis:6379 / vault:8200
+      # service names are actually exercised - which is most of what the schedule exists to catch.
+      - name: Verify Demo1 in the lab topology
+        env:
+          IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
+        run: bash tests/images/smoke-demo1.sh
+
+      - name: Verify the Vault provider swap
+        env:
+          IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
+        run: bash tests/images/smoke-demo3.sh
+
       - name: Push both images
         run: |
           set -euo pipefail

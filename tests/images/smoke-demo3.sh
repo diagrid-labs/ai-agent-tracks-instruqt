@@ -33,6 +33,42 @@ check_ok "seed-vault.sh waits for a Vault that is still starting" -- \
 check_ok "seed-vault.sh is safe to run a second time" -- \
     docker exec "$WS" seed-vault.sh
 
+# --- the seed must FAIL loudly rather than leave Vault empty -------------------------------------
+# The lab's setup step reads this script's exit status. A seed that returns 0 having written
+# nothing is the worst outcome available: setup "succeeds", Vault is empty, and the learner
+# discovers it at challenge 4 as an opaque secret-not-found.
+seed_must_fail() {
+    local label="$1" content="$2"
+    docker exec -i "$WS" sh -c "cat > /tmp/bad.json" <<<"$content"
+    if docker exec "$WS" seed-vault.sh /tmp/bad.json >/dev/null 2>&1; then
+        fail "$label: seed-vault.sh exited 0 when it wrote nothing"
+    fi
+    pass "$label"
+}
+seed_must_fail "malformed JSON is a hard failure" '{ this is not json'
+seed_must_fail "an empty object is a hard failure" '{}'
+seed_must_fail "a JSON array is a hard failure" '["a","b"]'
+
+# A value containing a newline must round-trip intact and must NOT fabricate extra secrets - a
+# line-delimited producer truncates the value and turns its tail into a key of its own.
+docker exec -i "$WS" sh -c 'cat > /tmp/multi.json' <<<'{"multiline":"line1\nline2","plain":"ok"}'
+check_ok "a value containing a newline seeds without error" -- \
+    docker exec "$WS" seed-vault.sh /tmp/multi.json
+check_eq "a newline in a value round-trips intact" "line1
+line2" \
+    "$(docker exec "$WS" sh -c 'curl -sf -H "X-Vault-Token: root" http://vault:8200/v1/secret/data/dapr/multiline | python3 -c "import json,sys; print(json.load(sys.stdin)[\"data\"][\"data\"][\"multiline\"])"' 2>&1)"
+check_ok "a newline in a value fabricates no phantom secret" -- \
+    docker exec "$WS" sh -c '! curl -sf -o /dev/null -H "X-Vault-Token: root" http://vault:8200/v1/secret/data/dapr/line2'
+
+# The checks above left test keys in Vault. Remove them (KV v2: deleting the metadata drops
+# every version) and re-seed, so the bulk assertion below sees exactly the template's contents.
+for test_key in multiline plain; do
+    docker exec "$WS" curl -sf -o /dev/null -X DELETE -H "X-Vault-Token: root" \
+        "http://vault:8200/v1/secret/metadata/dapr/$test_key" 2>/dev/null || true
+done
+check_ok "re-seeding the real template after the robustness checks" -- \
+    docker exec "$WS" seed-vault.sh
+
 expected_bulk='{"orderdb-password":"s3cr3t-pa55w0rd","payments-api-key":"pk-test-7f3a9"}'
 
 for lang in dotnet python java; do
