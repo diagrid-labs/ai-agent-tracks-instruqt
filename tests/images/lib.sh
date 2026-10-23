@@ -120,7 +120,16 @@ prepare_workspace() {
 }
 
 stop_dapr() {
-    docker exec "$WS" sh -c 'pkill -f "dapr run" ; pkill -f daprd ; pkill -f "dotnet run" ; pkill -f spring-boot ; pkill -f uvicorn' >/dev/null 2>&1 || true
+    # The bracket is load-bearing: `pkill -f "dapr run"` also matches the very shell running it
+    # (its own command line contains the pattern), so the shell kills itself and every later
+    # pkill in the list never runs. `[d]apr run` matches the real process and not this command.
+    docker exec "$WS" sh -c '
+        pkill -f "[d]apr run" || true
+        pkill -f "[d]aprd" || true
+        pkill -f "[d]otnet run" || true
+        pkill -f "[s]pring-boot" || true
+        pkill -f "[u]vicorn" || true
+    ' >/dev/null 2>&1 || true
     sleep 3
 }
 
