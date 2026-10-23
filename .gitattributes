@@ -1,0 +1,15 @@
+# Line endings.
+#
+# Anything copied into, or executed inside, a Linux container must keep LF. With
+# core.autocrlf=true - the Windows default - a checkout would otherwise rewrite these to CRLF,
+# and a CRLF shebang fails inside the image with
+#   /usr/bin/env: 'bash\r': No such file or directory
+# which breaks the workstation entrypoint for every contributor who clones on Windows. Git
+# stores LF either way; this is about what lands in the working copy that `docker build` reads.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.env           text eol=lf
+
+# The image and its tests in full, including the Maven settings the Dockerfile COPYs.
+images/**       text eol=lf
+tests/images/** text eol=lf
