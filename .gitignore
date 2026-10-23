@@ -154,3 +154,10 @@ MAF/PrDigest/PrDigest.AppHost/secrets.json
 ####################
 .DS_Store
 Thumbs.db
+
+# Maven build output
+target/
+*.class
+
+# Generated investigation reports
+investigation-*.md

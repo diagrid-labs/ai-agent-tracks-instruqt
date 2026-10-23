@@ -59,7 +59,7 @@ public class BookingsServiceTests
         Assert.Equal("2026-03-15", bookings[0].EventDate);
         Assert.NotNull(captured);
         Assert.Equal("query", captured!.Operation);
-        Assert.Contains("SELECT", captured.Metadata["sql"]);
+        Assert.Equal("SELECT id, venue, event_date::text FROM bookings ORDER BY id", captured.Metadata["sql"]);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class BookingsServiceTests
             .Setup(c => c.InvokeBindingAsync(It.IsAny<BindingRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((BindingRequest req, CancellationToken _) => new BindingResponse(
                 req,
-                ReadOnlyMemory<byte>.Empty,
+                Encoding.UTF8.GetBytes("[]"),
                 new Dictionary<string, string>()));
 
         var service = new BookingsService(mockClient.Object);

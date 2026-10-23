@@ -1,33 +1,71 @@
-# Venue Bookings — Dapr Bindings API Demo
+# Venue Bookings with Dapr Bindings
 
-A small app, in three languages, that saves and queries venue bookings through a single Dapr **output binding** to PostgreSQL. Built for the Dapr University "Using the Dapr Bindings API with PostgreSQL" track.
+Save and query venue bookings through the Dapr PostgreSQL output binding. Choose Python, .NET or Java. Each app uses the same database schema and component file.
 
-## What this demonstrates
+## Layout
 
-- **The Bindings API, not the State Store API.** The app never talks to Postgres directly. It calls `POST /v1.0/bindings/postgres-binding` with a SQL statement, and Dapr's `bindings.postgresql` component runs it.
-- **One binding, two operations.** Postgres only has an output binding in Dapr (there's no such thing as a Postgres input binding: nothing about a database can reach into your app and trigger it). Saving and querying both go through `postgres-binding`, just with a different `operation`: `exec` for the INSERT, `query` for the SELECT.
+```text
+venue-bookings/
+  init.sql
+  resources/postgres-binding.yaml
+  python/
+  dotnet/
+    VenueBookings.sln
+    src/VenueBookings/
+    tests/VenueBookings.Tests/
+  java/
+    mvnw
+    mvnw.cmd
+    .mvn/wrapper/
+    src/main/
+    src/test/
+```
 
-## Languages
+`exec` runs the parameterized INSERT. `query` runs the SELECT through that same output binding. The query selects `event_date::text` so dates come back as `YYYY-MM-DD`.
 
-Each language is a self-contained, independently runnable app with its own dependency file, `resources/postgres-binding.yaml`, and `init.sql`:
+## Choose a language
 
-| Folder | Stack | Notes |
-|---|---|---|
-| [`python/`](python/) | FastAPI + `dapr` SDK | Reports `rows_affected` on save (from the binding's response metadata). |
-| [`dotnet/`](dotnet/) | ASP.NET Core minimal API + `Dapr.AspNetCore` (brings in `Dapr.Client`) | Reports `rows_affected` on save. |
-| [`java/`](java/) | Spring Boot + `io.dapr:dapr-sdk` | Can't report `rows_affected`: the Java SDK's `invokeBinding` doesn't expose response metadata the way Python and .NET do. See that folder's README. |
+| Sample | Requirements | Request and response fields |
+| --- | --- | --- |
+| [Python](python/README.md) | Python 3.11+ and uv | `event_date`, `rows_affected` |
+| [.NET](dotnet/README.md) | .NET 10 SDK | `event_date`, `rows_affected` |
+| [Java](java/README.md) | JDK 21; Maven Wrapper included | `eventDate`; save returns only `status` |
 
-## Endpoints (same shape in every language)
+Python and .NET use snake_case JSON. Java uses camelCase. The Java SDK does not expose binding response metadata, so the Java save response does not include an affected-row count.
 
-| Method | Path | Binding operation | What it does |
-|---|---|---|---|
-| `POST` | `/bookings` | `exec` | Inserts a row: `{"venue": "...", "event_date"/"eventDate": "YYYY-MM-DD"}` |
-| `GET` | `/bookings` | `query` | Returns every row as `{"bookings": [...]}` |
+All apps expose `POST /bookings` and `GET /bookings` on port 8006. Run one app at a time. A row saved through one language can be read through either of the others.
 
-Each language's own README has exact setup, run, and test commands.
+## Start PostgreSQL
 
-## Resources
+Install Docker and the Dapr CLI, then run `dapr init`. From this folder, run:
 
-Every language folder carries its own copy of:
-- `resources/postgres-binding.yaml` — the one Dapr component both endpoints use, `type: bindings.postgresql`.
-- `init.sql` — creates the `bookings` table. Mount it into the Postgres container's `/docker-entrypoint-initdb.d/` so it runs on first boot.
+```bash
+docker run -d --name dapr_postgres -p 5432:5432 \
+  -e POSTGRES_PASSWORD=dapr123 -e POSTGRES_DB=venuedb \
+  --mount "type=bind,source=$(pwd)/init.sql,target=/docker-entrypoint-initdb.d/init.sql,readonly" \
+  postgres:16
+```
+
+Wait for this command to print `1` before starting an app:
+
+```bash
+docker exec dapr_postgres psql -U postgres -d venuedb -tAc 'SELECT count(*) FROM information_schema.tables WHERE table_name = $$bookings$$;'
+```
+
+In PowerShell, run the container command on one line and use `${PWD}/init.sql` for the source path. The credentials in the component are for this local training database.
+
+The SQL file runs only when Postgres initializes an empty data directory. To inspect saved rows:
+
+```bash
+docker exec dapr_postgres psql -U postgres -d venuedb -c 'SELECT * FROM bookings;'
+```
+
+Each language README has its build, run and test commands. Those commands point to the shared component using `--resources-path ../resources`.
+
+## Cleanup
+
+Stop the app with Ctrl+C. Remove the training container when finished:
+
+```bash
+docker rm -fv dapr_postgres
+```

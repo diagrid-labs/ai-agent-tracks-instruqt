@@ -1,64 +1,59 @@
-# Venue Bookings (Java) — Dapr Bindings API Demo
+# Venue Bookings in Java
 
-A small Spring Boot app that saves and queries venue bookings through a single Dapr **output binding** to PostgreSQL. Built for the Dapr University "Using the Dapr Bindings API with PostgreSQL" track.
+A Spring Boot 4 app using Java 21. The committed Maven Wrapper downloads the required Maven version. On Windows, use `mvnw.cmd` in place of `bash ./mvnw`.
 
-## What this demonstrates
-
-- **The Bindings API, not the State Store API.** The app never talks to Postgres directly. It calls `POST /v1.0/bindings/postgres-binding` with a SQL statement, and Dapr's `bindings.postgresql` component runs it.
-- **One binding, two operations.** Postgres only has an output binding in Dapr (there's no such thing as a Postgres input binding: nothing about a database can reach into your app and trigger it). Saving and querying both go through `postgres-binding`, just with a different `operation`: `exec` for the INSERT, `query` for the SELECT.
-
-## Endpoints
-
-| Method | Path | Binding operation | What it does |
-|---|---|---|---|
-| `POST` | `/bookings` | `exec` | Inserts a row: `{"venue": "...", "eventDate": "YYYY-MM-DD"}` |
-| `GET` | `/bookings` | `query` | Returns every row as `{"bookings": [...]}` |
-
-> [!NOTE]
-> Unlike the Python and .NET versions, this one can't report `rows_affected` on save. The Java Dapr SDK's `invokeBinding` doesn't expose response metadata alongside the payload, only the .NET and Python SDKs do that.
-
-## Setup
+From the repository root:
 
 ```bash
 cd bindings/venue-bookings/java
-mvn clean install
+bash ./mvnw clean verify
 ```
+
+## Start PostgreSQL
+
+Install Docker and the Dapr CLI, then run `dapr init`. From this language folder, start the shared training database:
+
+```bash
+docker run -d --name dapr_postgres -p 5432:5432 \
+  -e POSTGRES_PASSWORD=dapr123 -e POSTGRES_DB=venuedb \
+  --mount "type=bind,source=$(cd .. && pwd)/init.sql,target=/docker-entrypoint-initdb.d/init.sql,readonly" \
+  postgres:16
+```
+
+In PowerShell, use the same command on one line with `source=${PWD}/../init.sql`. If the container is already running from another language's walkthrough, keep using it.
+
+Wait for this command to print `1`:
+
+```bash
+docker exec dapr_postgres psql -U postgres -d venuedb -tAc 'SELECT count(*) FROM information_schema.tables WHERE table_name = $$bookings$$;'
+```
+
+The shared component connects to `localhost:5432` with user `postgres`, password `dapr123` and database `venuedb`. The shared `init.sql` creates the `bookings` table at first boot.
+
 
 ## Run
 
-Requires the Dapr CLI (`dapr init`) and a local Postgres container reachable at `localhost:5432` (see `init.sql` for the schema it expects, and `resources/postgres-binding.yaml` for the connection string).
-
 ```bash
-dapr run --app-id venue-bookings --resources-path ./resources -- mvn spring-boot:run
+dapr run --app-id venue-bookings --resources-path ../resources -- bash ./mvnw spring-boot:run
 ```
 
-Save a booking:
+On Windows, use `dapr run --app-id venue-bookings --resources-path ../resources -- mvnw.cmd spring-boot:run`.
+
+In another terminal, save and read a booking:
 
 ```bash
-curl -X POST http://localhost:8006/bookings -H "Content-Type: application/json" -d '{"venue": "Grand Ballroom", "eventDate": "2026-03-15"}'
-```
-
-Read them back:
-
-```bash
+curl -X POST http://localhost:8006/bookings -H "Content-Type: application/json" -d '{"venue":"Grand Ballroom","eventDate":"2026-03-15"}'
 curl http://localhost:8006/bookings
 ```
+
+Java uses camelCase JSON for request and response records. The save response is `{"status":"saved"}`. The Dapr Java SDK only returns the binding payload, so it cannot expose the `rows-affected` metadata available in Python and .NET. A returned booking contains `id`, `venue` and `eventDate`. Its date stays `2026-03-15` because the SELECT casts it to text.
 
 ## Tests
 
 ```bash
-mvn test
+bash ./mvnw test
 ```
 
-Unit tests mock `DaprClient` (via Mockito), so they don't need a running sidecar or database. They assert that each method calls the binding with the right operation and SQL.
+Tests mock Dapr and check SQL operations and query responses, including an empty array. Spring supplies the configured Jackson mapper through constructor injection. Binding failures return HTTP 503 with a hint to check Dapr and Postgres.
 
-## Resources
-
-- `resources/postgres-binding.yaml` — the one Dapr component both endpoints use, `type: bindings.postgresql`.
-- `init.sql` — creates the `bookings` table. Mount it into the Postgres container's `/docker-entrypoint-initdb.d/` so it runs on first boot.
-
-## Files
-
-- `BookingsController.java` — the two endpoints.
-- `BookingsService.java` — the binding calls: one method per operation.
-- `init.sql` — schema for the `bookings` table.
+Stop the app with Ctrl+C. See the [shared README](../README.md) for cleanup.

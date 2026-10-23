@@ -1,62 +1,57 @@
-# Venue Bookings (.NET) — Dapr Bindings API Demo
+# Venue Bookings in .NET
 
-A small ASP.NET Core minimal API that saves and queries venue bookings through a single Dapr **output binding** to PostgreSQL. Built for the Dapr University "Using the Dapr Bindings API with PostgreSQL" track.
+An ASP.NET Core app targeting .NET 10. The solution contains separate app and test projects.
 
-## What this demonstrates
-
-- **The Bindings API, not the State Store API.** The app never talks to Postgres directly. It calls `POST /v1.0/bindings/postgres-binding` with a SQL statement, and Dapr's `bindings.postgresql` component runs it.
-- **One binding, two operations.** Postgres only has an output binding in Dapr (there's no such thing as a Postgres input binding: nothing about a database can reach into your app and trigger it). Saving and querying both go through `postgres-binding`, just with a different `operation`: `exec` for the INSERT, `query` for the SELECT.
-
-## Endpoints
-
-| Method | Path | Binding operation | What it does |
-|---|---|---|---|
-| `POST` | `/bookings` | `exec` | Inserts a row: `{"venue": "...", "eventDate": "YYYY-MM-DD"}` |
-| `GET` | `/bookings` | `query` | Returns every row as `{"bookings": [...]}` |
-
-## Setup
+From the repository root:
 
 ```bash
 cd bindings/venue-bookings/dotnet
-dotnet restore
+dotnet build
 ```
+
+## Start PostgreSQL
+
+Install Docker and the Dapr CLI, then run `dapr init`. From this language folder, start the shared training database:
+
+```bash
+docker run -d --name dapr_postgres -p 5432:5432 \
+  -e POSTGRES_PASSWORD=dapr123 -e POSTGRES_DB=venuedb \
+  --mount "type=bind,source=$(cd .. && pwd)/init.sql,target=/docker-entrypoint-initdb.d/init.sql,readonly" \
+  postgres:16
+```
+
+In PowerShell, use the same command on one line with `source=${PWD}/../init.sql`. If the container is already running from another language's walkthrough, keep using it.
+
+Wait for this command to print `1`:
+
+```bash
+docker exec dapr_postgres psql -U postgres -d venuedb -tAc 'SELECT count(*) FROM information_schema.tables WHERE table_name = $$bookings$$;'
+```
+
+The shared component connects to `localhost:5432` with user `postgres`, password `dapr123` and database `venuedb`. The shared `init.sql` creates the `bookings` table at first boot.
+
 
 ## Run
 
-Requires the Dapr CLI (`dapr init`) and a local Postgres container reachable at `localhost:5432` (see `init.sql` for the schema it expects, and `resources/postgres-binding.yaml` for the connection string).
-
 ```bash
-dapr run --app-id venue-bookings --resources-path ./resources -- dotnet run
+dapr run --app-id venue-bookings --resources-path ../resources -- dotnet run --project src/VenueBookings
 ```
 
-Save a booking:
+In another terminal, save and read a booking:
 
 ```bash
-curl -X POST http://localhost:8006/bookings -H "Content-Type: application/json" -d '{"venue": "Grand Ballroom", "eventDate": "2026-03-15"}'
-```
-
-Read them back:
-
-```bash
+curl -X POST http://localhost:8006/bookings -H "Content-Type: application/json" -d '{"venue":"Grand Ballroom","event_date":"2026-03-15"}'
 curl http://localhost:8006/bookings
 ```
+
+The app configures snake_case JSON for both endpoints. The save response is `{"status":"saved","rows_affected":"1"}`. A returned booking contains `id`, `venue` and `event_date`. Its date stays `2026-03-15` because the SELECT casts it to text.
 
 ## Tests
 
 ```bash
-cd tests
 dotnet test
 ```
 
-Unit tests mock `DaprClient` (via Moq), so they don't need a running sidecar or database. They assert that each method calls the binding with the right operation and SQL.
+Running this command from `dotnet/` discovers the solution and runs the test project. The tests mock Dapr and check operations, SQL parameters and parsing of query results, including `[]`.
 
-## Resources
-
-- `resources/postgres-binding.yaml` — the one Dapr component both endpoints use, `type: bindings.postgresql`.
-- `init.sql` — creates the `bookings` table. Mount it into the Postgres container's `/docker-entrypoint-initdb.d/` so it runs on first boot.
-
-## Files
-
-- `Program.cs` — the two endpoints.
-- `BookingsService.cs` — the binding calls: one method per operation.
-- `init.sql` — schema for the `bookings` table.
+A binding failure returns HTTP 503 with a hint to check Dapr and Postgres. Stop the app with Ctrl+C. See the [shared README](../README.md) for cleanup.

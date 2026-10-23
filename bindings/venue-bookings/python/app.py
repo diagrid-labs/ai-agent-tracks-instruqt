@@ -1,70 +1,104 @@
-"""Venue Bookings — Dapr Bindings API demo (PostgreSQL output binding).
-
-Two endpoints, one Dapr binding component:
-- POST /bookings  calls the binding with operation "exec"  (INSERT a row)
-- GET  /bookings  calls the binding with operation "query" (SELECT the rows)
-
-There is only one binding here, bindings.postgresql, which is output-only. Dapr has no
-"input binding" for Postgres: an input binding is something that triggers your app (like
-a Cron schedule), and Postgres has no mechanism for that. Both endpoints below call the
-same binding, just with a different "operation".
-"""
+"""Save and query venue bookings through a PostgreSQL output binding."""
 
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
+from typing import Annotated
 
 from dapr.clients import DaprClient
-from fastapi import FastAPI
+from dapr.clients.exceptions import DaprInternalError
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
+from grpc import RpcError
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
-
+logger = logging.getLogger(__name__)
 BINDING_NAME = "postgres-binding"
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with DaprClient() as client:
+        app.state.dapr_client = client
+        yield
 
 
-class Booking(BaseModel):
+app = FastAPI(lifespan=lifespan)
+
+
+def get_dapr_client(request: Request) -> DaprClient:
+    return request.app.state.dapr_client
+
+
+DaprDependency = Annotated[DaprClient, Depends(get_dapr_client)]
+
+
+class BookingRequest(BaseModel):
     venue: str
     event_date: str
 
 
-@app.post("/bookings")
-def create_booking(booking: Booking):
-    """Save a booking with the binding's "exec" operation (an INSERT)."""
-    with DaprClient() as client:
-        response = client.invoke_binding(
-            binding_name=BINDING_NAME,
-            operation="exec",
-            data=b"",
-            binding_metadata={
-                "sql": "INSERT INTO bookings (venue, event_date) VALUES ($1, $2)",
-                "params": json.dumps([booking.venue, booking.event_date]),
-            },
-        )
+class Booking(BookingRequest):
+    id: int
+
+
+class SaveBookingResponse(BaseModel):
+    status: str
+    rows_affected: str | None
+
+
+class BookingsResponse(BaseModel):
+    bookings: list[Booking]
+
+
+@app.exception_handler(RpcError)
+@app.exception_handler(DaprInternalError)
+async def binding_error(request: Request, exc: Exception):
+    logger.error("Postgres binding request failed", exc_info=exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Postgres binding request failed. Check the Dapr sidecar and database."},
+    )
+
+
+@app.post("/bookings", response_model=SaveBookingResponse)
+def create_booking(booking: BookingRequest, client: DaprDependency):
+    response = client.invoke_binding(
+        binding_name=BINDING_NAME,
+        operation="exec",
+        data=b"",
+        binding_metadata={
+            "sql": "INSERT INTO bookings (venue, event_date) VALUES ($1, $2)",
+            "params": json.dumps([booking.venue, booking.event_date]),
+        },
+    )
     rows_affected = response.binding_metadata.get("rows-affected")
-    logging.info("Inserted booking for %s on %s (rows-affected=%s)", booking.venue, booking.event_date, rows_affected)
-    return {"status": "saved", "rows_affected": rows_affected}
+    logger.info(
+        "Inserted booking for %s on %s (rows-affected=%s)",
+        booking.venue,
+        booking.event_date,
+        rows_affected,
+    )
+    return SaveBookingResponse(status="saved", rows_affected=rows_affected)
 
 
-@app.get("/bookings")
-def list_bookings():
-    """Read every booking back with the same binding's "query" operation (a SELECT)."""
-    with DaprClient() as client:
-        response = client.invoke_binding(
-            binding_name=BINDING_NAME,
-            operation="query",
-            data=b"",
-            binding_metadata={
-                "sql": "SELECT id, venue, event_date FROM bookings ORDER BY id",
-                "params": "[]",
-            },
-        )
+@app.get("/bookings", response_model=BookingsResponse)
+def list_bookings(client: DaprDependency):
+    response = client.invoke_binding(
+        binding_name=BINDING_NAME,
+        operation="query",
+        data=b"",
+        binding_metadata={
+            "sql": "SELECT id, venue, event_date::text FROM bookings ORDER BY id",
+            "params": "[]",
+        },
+    )
     rows = json.loads(response.data) if response.data else []
-    bookings = [{"id": row[0], "venue": row[1], "event_date": row[2]} for row in rows]
-    logging.info("Queried %d booking(s)", len(bookings))
-    return {"bookings": bookings}
+    bookings = [Booking(id=row[0], venue=row[1], event_date=row[2]) for row in rows]
+    logger.info("Queried %d booking(s)", len(bookings))
+    return BookingsResponse(bookings=bookings)
 
 
 if __name__ == "__main__":
