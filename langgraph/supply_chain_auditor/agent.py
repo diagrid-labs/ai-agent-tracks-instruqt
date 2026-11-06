@@ -2,7 +2,7 @@
 
 The diagrid ``DaprWorkflowGraphRunner`` executes each LangGraph node as a Dapr
 Workflow activity. It connects to a Dapr sidecar — locally via ``dapr run``, or
-in CI directly to Diagrid Catalyst via the standard ``DAPR_GRPC_ENDPOINT`` /
+in CI directly to Diagrid via the standard ``DAPR_GRPC_ENDPOINT`` /
 ``DAPR_API_TOKEN`` environment variables.
 """
 
