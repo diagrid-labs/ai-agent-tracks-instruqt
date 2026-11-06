@@ -63,8 +63,8 @@ Create a local `.env` with these keys:
 | `LLM_MODEL` | no | `gpt-4.1-mini` | Chat model (`gpt-4.1` for deeper analysis) |
 | `LLM_MAX_TOKENS` | no | `8000` | Max output tokens |
 | `LOG_LEVEL` | no | `INFO` | Logging verbosity |
-| `DAPR_GRPC_ENDPOINT` | no | — | Catalyst gRPC gateway (CI; lets the adapter skip a local sidecar) |
-| `DAPR_API_TOKEN` | no | — | Catalyst App-ID token (CI) |
+| `DAPR_GRPC_ENDPOINT` | no | — | Diagrid gRPC gateway (CI; lets the adapter skip a local sidecar) |
+| `DAPR_API_TOKEN` | no | — | Diagrid App-ID token (CI) |
 
 In the GitHub Action, `PR_REPO`, `PR_NUMBER`, `PR_TITLE`, `PR_BODY`, and the
 `DEP_*` Dependabot metadata are injected for you.
@@ -75,7 +75,7 @@ The auditor needs the bumped dependency. In the GitHub Action that comes from
 `dependabot/fetch-metadata`; **locally, just pass a real Dependabot PR number**
 and the auditor fetches the PR title from GitHub to find the bump.
 
-### Diagrid Catalyst via the CLI
+### Diagrid via the CLI
 
 Install the CLI first (`curl -fsSL https://downloads.diagrid.io/cli/install.sh | bash`,
 or see [docs.diagrid.io](https://docs.diagrid.io)), then:
@@ -108,7 +108,7 @@ grouped Dependabot PRs need that explicit form (or the Action's fetch-metadata).
 ### As a GitHub Action
 
 `.github/workflows/supply-chain-audit.yml` (in the repo root) triggers on
-Dependabot PRs, connects to Catalyst via the `DAPR_GRPC_ENDPOINT` /
+Dependabot PRs, connects to Diagrid via the `DAPR_GRPC_ENDPOINT` /
 `DAPR_API_TOKEN` secrets, runs `python app.py`, and the auditor posts the comment
 with the workflow's `GITHUB_TOKEN`.
 
