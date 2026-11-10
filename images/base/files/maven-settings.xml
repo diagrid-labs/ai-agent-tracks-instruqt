@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven is the one toolchain with no cache environment variable (design §7.4), so the shared
+  repository is pointed at from the global settings file instead. Global, not ~/.m2/settings.xml,
+  so it applies to every user the workstation might run as.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <localRepository>/opt/caches/m2</localRepository>
+</settings>

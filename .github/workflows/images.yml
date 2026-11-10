@@ -1,0 +1,126 @@
+name: Build and publish the Dapr University track images
+
+# A version bump is a PR, not a terminal session (design §10 item 4): edit images/versions.env,
+# merge, and this produces a new image. Nothing a human pastes into a build VM.
+#
+# Tagging: every build gets an immutable <date>-<sha7> tag and moves `latest`. Labs pin the
+# IMMUTABLE tag, so a rebuild never changes a running track underneath a learner, and adopting a
+# new image is a deliberate one-line edit in dapr-university-instruqt.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'images/**'
+      - 'secrets/**'
+      - '.github/workflows/images.yml'
+  workflow_dispatch:
+  # Weekly, so an upstream bump - a new Ubuntu package, a moved demo dependency - surfaces as a
+  # red build here rather than as a broken lab for a learner.
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve versions and the immutable tag
+        run: |
+          set -euo pipefail
+          # images/versions.env is the single owner of these two numbers (design §9.6).
+          set -a; . images/versions.env; set +a
+          {
+            echo "DAPR_CLI_VERSION=$DAPR_CLI_VERSION"
+            echo "DAPR_RUNTIME_VERSION=$DAPR_RUNTIME_VERSION"
+            echo "TAG=$(date +%Y-%m-%d)-${GITHUB_SHA::7}"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          # Push credentials, deliberately NOT the DockerUSER/DockerPAT the sandbox uses to pull:
+          # a pull-only token here would reproduce the "only the author can rebuild" anti-goal.
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Plain `docker build`, not buildx's container driver: the secrets layer's FROM refers to
+      # the base image by tag, and a container-driver build would resolve that against the
+      # registry rather than the base we just built. The docker driver keeps both in the local
+      # daemon, and these are the same commands the Dockerfile headers document.
+      - name: Build the base image
+        run: |
+          set -euo pipefail
+          docker build --platform=linux/amd64 \
+            --build-arg DAPR_CLI_VERSION --build-arg DAPR_RUNTIME_VERSION \
+            -t "diagrid/university-base:$TAG" \
+            -t "diagrid/university-base:latest" \
+            images/base
+
+      - name: Build the secrets layer
+        run: |
+          set -euo pipefail
+          docker build --platform=linux/amd64 \
+            -f images/secrets/Dockerfile \
+            --build-context demos=secrets \
+            --build-arg "BASE_TAG=$TAG" \
+            -t "diagrid/university-secrets:$TAG" \
+            -t "diagrid/university-secrets:latest" \
+            images/secrets
+
+      # Before the push, not after. CI owning this is the whole point: a cold cache or a broken
+      # control plane fails red here, where someone sees it, instead of silently in a lab.
+      - name: Verify the image/lab contract
+        env:
+          IMAGE_BASE: diagrid/university-base:${{ env.TAG }}
+        run: bash tests/images/contract.sh
+
+      - name: Verify the warm caches
+        env:
+          IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
+        run: bash tests/images/caches-secrets.sh
+
+      # The two suites above never start a sidecar, so without these the weekly build could go
+      # green on an image whose sidecar never becomes ready. These are the only place that
+      # /v1.0/healthz == 204, the Vault seed and its re-run, and the redis:6379 / vault:8200
+      # service names are actually exercised - which is most of what the schedule exists to catch.
+      - name: Verify Demo1 in the lab topology
+        env:
+          IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
+        run: bash tests/images/smoke-demo1.sh
+
+      - name: Verify the Vault provider swap
+        env:
+          IMAGE_SECRETS: diagrid/university-secrets:${{ env.TAG }}
+        run: bash tests/images/smoke-demo3.sh
+
+      - name: Push both images
+        run: |
+          set -euo pipefail
+          docker push "diagrid/university-base:$TAG"
+          docker push "diagrid/university-base:latest"
+          docker push "diagrid/university-secrets:$TAG"
+          docker push "diagrid/university-secrets:latest"
+
+      - name: Report the immutable tags
+        run: |
+          {
+            echo "## Images published"
+            echo
+            echo "Pin the **immutable** tag in the lab's \`sandbox.hcl\`:"
+            echo
+            echo '```'
+            echo "diagrid/university-base:$TAG"
+            echo "diagrid/university-secrets:$TAG"
+            echo '```'
+            echo
+            echo "\`latest\` was moved to the same build. Labs should not use it."
+          } >> "$GITHUB_STEP_SUMMARY"
