@@ -22,8 +22,8 @@ Outcome: not yet verified.
 
 ## 5. `resourcesPaths` list in multi-app run (§3.6)
 
-Outcome: not yet verified.
+Outcome: works. With `common.resourcesPaths: [../resources, ./resources]` in a multi-app `dapr.yaml`, Dapr CLI 1.19.1 / runtime 1.19.1 loads both folders: the shared `pubsub` component and the Demo 1 `shipping-orders` subscription. `shipping` received its orders in .NET, Python and Java, so no fallback (copying `pubsub.yaml` into each demo) is needed.
 
 ## 6. Metadata endpoint subscription types (Demos 1 and 2)
 
-Outcome: not yet verified.
+Outcome (Demo 1): as designed. `GET /v1.0/metadata` on `shipping` (:3511) lists the `orders` subscription with `type` `DECLARATIVE`; on `invoicing` (:3512) it is `PROGRAMMATIC`. Same in .NET, Python and Java. Demo 2 (`STREAMING`) is not yet checked.

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Smoke test for Demo 1 (declarative vs programmatic subscriptions).
+# Usage: smoke-demo1.sh dotnet|python|java
+source "$(dirname "$0")/lib.sh" "$@"
+
+DEMO="$ROOT/pubsub/$LANG_ARG/Demo1-Subscriptions"
+RUN="$(run_id)"
+
+# json_norm round-trips JSON through python3 (key order preserved) so spacing never matters.
+json_norm() {
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read())))'
+}
+
+# sub_type <dapr-http-port>: prints the type of the subscription on topic "orders".
+sub_type() {
+  curl -s "http://localhost:$1/v1.0/metadata" | python3 -c '
+import json, sys
+meta = json.load(sys.stdin)
+print(next((s.get("type", "") for s in meta.get("subscriptions", []) if s.get("topic") == "orders"), "NONE"))'
+}
+
+assert_ports_free 5101 5102 5103 3510 3511 3512
+
+start_demo "$DEMO" 5101 5102 5103 3510 3511 3512
+wait_for_sidecar 3510
+wait_for_sidecar 3511
+wait_for_sidecar 3512
+
+# 1. A valid order is published to the orders topic.
+resp="$(post_json http://localhost:5101/orders \
+  "{\"orderId\":\"$RUN-1\",\"item\":\"coffee-beans\",\"quantity\":2,\"priority\":\"standard\"}")"
+assert_eq "200" "${resp%% *}" "POST /orders returns 200"
+assert_eq "{\"orderId\": \"$RUN-1\", \"topic\": \"orders\"}" "$(echo "${resp#* }" | json_norm)" \
+  "POST /orders body names the order and topic"
+
+# 2. Both subscribers receive it: shipping declaratively, invoicing from code.
+wait_for_log Shipping shipping "shipping received order $RUN-1"
+echo "PASS: shipping received the order"
+wait_for_log Invoicing invoicing "invoicing received order $RUN-1"
+echo "PASS: invoicing received the order"
+
+# 3. The metadata endpoint tells the two kinds of subscription apart.
+assert_eq "DECLARATIVE" "$(sub_type 3511)" "shipping subscription is DECLARATIVE"
+assert_eq "PROGRAMMATIC" "$(sub_type 3512)" "invoicing subscription is PROGRAMMATIC"
+
+# 4. A malformed order is refused and nothing is published.
+resp="$(post_json http://localhost:5101/orders "{\"orderId\":\"$RUN-2\"}")"
+assert_eq "400" "${resp%% *}" "malformed order returns 400"
+assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "malformed order body is INVALID_ORDER"
+sleep 3
+assert_eq "0" "$(count_log Shipping shipping "$RUN-2")" "shipping never saw the malformed order"
+
+echo "Demo 1 ($LANG_ARG): all assertions passed"
