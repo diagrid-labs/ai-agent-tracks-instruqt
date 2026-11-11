@@ -37,3 +37,9 @@ Outcome: works. With `common.resourcesPaths: [../resources, ./resources]` in a m
 ## 6. Metadata endpoint subscription types (Demos 1 and 2)
 
 Outcome (Demo 1): as designed. `GET /v1.0/metadata` on `shipping` (:3511) lists the `orders` subscription with `type` `DECLARATIVE`; on `invoicing` (:3512) it is `PROGRAMMATIC`. Same in .NET, Python and Java. Demo 2: `warehouse` (:3511) lists the `orders` subscription with `type` `STREAMING` in .NET, Python and Java. `/v1.0/healthz` on the `warehouse` sidecar returns 204 although it has no `appPort`, so no `healthz/outbound` fallback is needed.
+
+## 4b. Dead-letter trigger on RabbitMQ (Demo 6)
+
+Outcome: same behaviour as Redis. Demo 5's unchanged apps and `resources/` run against `pubsub.rabbitmq` (`autoAck: "false"`, `requeueInFailure: "false"`, no `enableDeadLetter`). Routing by priority works, the poison order was delivered **4 times** (first try + 3 retries from `resiliency.yaml`) and then dead-lettered once to `/orders/dead`, in .NET, Python and Java; the good orders were never dead-lettered. The count stayed at 4 after a 3 s settle wait, so RabbitMQ did not requeue it. Dapr created exchanges `orders` and `orders-dead` (the topic names) and durable queues `shipping-orders` and `shipping-orders-dead` (`<app-id>-<topic>`), checked through the management API at :15672.
+
+Gotcha in `tests/pubsub/start-rabbitmq.sh`: pinging with a plain `docker exec` runs as root and creates a root-owned `/var/lib/rabbitmq/.erlang.cookie` before the broker starts, so the broker crashes with `eacces` (container exits, "did not become ready"). The script and the smoke test ping with `docker exec -u rabbitmq`. Pinned image: `rabbitmq:4.4.0-management`.
