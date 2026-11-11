@@ -57,7 +57,23 @@ biggest="$(echo "$lines" | sed -E 's/.*received batch of ([0-9]+) orders.*/\1/' 
 [ "$nlines" -lt 25 ] || die "expected fewer than 25 batches, got $nlines (sizes: $sizes)"
 echo "PASS: 25 orders arrived in $nlines batches (largest $biggest)"
 
-# 4. count must be 1..100.
+# 4. Shipping answers per entry: a readable entry is SUCCESS, an unreadable one is DROP.
+# This posts a hand-made bulk body straight to the app, no sidecar involved.
+resp="$(post_json http://localhost:5102/orders/bulk \
+  "{\"entries\":[{\"entryId\":\"e1\",\"event\":{\"data\":{\"orderId\":\"$RUN-good\",\"item\":\"coffee-beans\",\"quantity\":1,\"priority\":\"standard\"},\"specversion\":\"1.0\"},\"contentType\":\"application/cloudevents+json\"},{\"entryId\":\"e2\",\"event\":{\"nothing\":\"here\"},\"contentType\":\"application/cloudevents+json\"}],\"topic\":\"orders\"}")"
+assert_eq "200" "${resp%% *}" "hand-made bulk body returns 200"
+assert_eq '{"statuses": [{"entryId": "e1", "status": "SUCCESS"}, {"entryId": "e2", "status": "DROP"}]}' \
+  "$(echo "${resp#* }" | json_norm)" "good entry is SUCCESS, unreadable entry is DROP, in entry order"
+wait_for_log Shipping shipping "shipping dropped unreadable entry e2"
+echo "PASS: shipping logged the dropped entry"
+
+# A body that is not a bulk envelope at all is a failed delivery.
+resp="$(post_json http://localhost:5102/orders/bulk "this is not json")"
+assert_eq "400" "${resp%% *}" "non-JSON bulk body returns 400"
+assert_eq '{"error": "INVALID_BULK_REQUEST"}' "$(echo "${resp#* }" | json_norm)" \
+  "non-JSON bulk body is INVALID_BULK_REQUEST"
+
+# 5. count must be 1..100.
 for q in "count=0&prefix=x" "count=101&prefix=x" "prefix=x"; do
   resp="$(post_json "http://localhost:5101/orders/bulk?$q" "")"
   assert_eq "400" "${resp%% *}" "POST /orders/bulk?$q returns 400"
