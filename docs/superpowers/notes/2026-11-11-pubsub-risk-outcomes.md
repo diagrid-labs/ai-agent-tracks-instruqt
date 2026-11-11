@@ -14,7 +14,15 @@ Outcome: not yet verified.
 
 ## 3. `rawPayload` on the subscriber side in each language (Demo 3)
 
-Outcome: not yet verified.
+Outcome: **publishing** with `rawPayload: "true"` works (the .NET SDK sends the order bytes as is, no base64 on the publish side). The problem is the **subscription** metadata `rawPayload: "true"` from the brief: with it, Dapr 1.19.1 delivers the raw message to the app wrapped in a CloudEvent with `data_base64`, not the bare order. Real body `shipping` received on `/orders-raw`:
+
+```
+{"data_base64":"eyJvcmRlcklkIjoicjE3OTQ0MzQ0MDgtMiIsIml0ZW0iOiJjb2ZmZWUtYmVhbnMiLCJxdWFudGl0eSI6MywicHJpb3JpdHkiOiJleHByZXNzIn0=","datacontenttype":"application/octet-stream","id":"a669a99e-24ea-45cc-b899-6b135c894d94","pubsubname":"pubsub","source":"Dapr","specversion":"1.0","topic":"orders-raw","traceid":"00-caa4258d9bd9f5f50e9ed3ed5d35ac78-e716131c626765f8-00","tracestate":"","type":"com.dapr.event.sent"}
+```
+
+Without `metadata.rawPayload` on the subscription (publisher still sets `rawPayload`), the same message arrives as the bare order JSON, `{"orderId":...,"item":...,"quantity":3,"priority":"express"}`, no `specversion`; the smoke test passes. So subscriber-side `rawPayload` means "wrap raw bytes for me" rather than "pass them through". A normal `/orders` delivery includes `traceparent` (and `traceid`, `tracestate`, `pubsubname`, `topic`, `time`), so that assertion holds.
+
+Decision (user): publish-side `rawPayload` only; the `orders-raw` subscription has no `rawPayload` metadata. Verified in .NET, Python and Java: publish-side `rawPayload` delivers the bare order JSON (no `specversion`, no base64) to `shipping`. In Java, `@RequestBody String` accepts both `application/cloudevents+json` (envelope route) and `application/json`; both smoke assertions pass.
 
 ## 4. Dead-letter trigger (Demo 5)
 

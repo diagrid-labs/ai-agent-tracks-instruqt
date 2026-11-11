@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v2alpha1
+kind: Subscription
+metadata:
+  name: shipping-orders-raw
+spec:
+  pubsubname: pubsub
+  topic: orders-raw
+  routes:
+    default: /orders-raw
+  # No rawPayload here. The publisher's rawPayload metadata is what keeps the CloudEvent
+  # envelope off the wire, so the message on this topic is the bare order and Dapr hands it
+  # to the app as it is.
+  # rawPayload: "true" on a subscription does the opposite job: it is for consuming raw
+  # messages from non-Dapr producers. Dapr then wraps each one into a CloudEvent with the
+  # bytes in data_base64 and datacontenttype application/octet-stream.
+  scopes:
+    - shipping
