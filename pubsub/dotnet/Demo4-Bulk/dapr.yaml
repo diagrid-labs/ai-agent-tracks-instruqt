@@ -1,0 +1,17 @@
+version: 1
+common:
+  # Two folders: the shared pubsub component and this demo's own subscription file.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: order-api
+    appDirPath: ./OrderApi
+    appPort: 5101
+    daprHTTPPort: 3510
+    command: ["dotnet", "run", "--urls", "http://localhost:5101"]
+  - appID: shipping
+    appDirPath: ./Shipping
+    appPort: 5102
+    daprHTTPPort: 3511
+    command: ["dotnet", "run", "--urls", "http://localhost:5102"]

@@ -10,7 +10,7 @@ Outcome: the happy path works. `DaprPreviewClient.subscribeToTopic("pubsub", "or
 
 ## 2. Bulk receive batching with Redis (Demo 4)
 
-Outcome: not yet verified.
+Outcome: works as designed. With `bulkSubscribe` (`maxMessagesCount: 10`, `maxAwaitDurationMs: 1000`) and one bulk publish of 25 orders, Redis delivers real batches in .NET, Python and Java: `shipping` logged batch sizes 10, 10, 5 in every language (3 requests for 25 orders). Dapr 1.19.1 POSTs to the subscription route `{"entries":[{"entryId","event","metadata":null,"contentType":"application/cloudevents+json"}, ...],"id","metadata":{"pubsubName":"pubsub"},"pubsubname","topic","type":"com.dapr.event.sent.bulk"}`. `entries[i].event` is a CloudEvent **object** (order in `event.data`), not a string, for orders published by the .NET, Python and Java SDKs; the handlers still parse a string `event` defensively. Order inside a batch is not the publish order (for example 23, 1, 20, ...). The Java `shipping` app has only `spring-boot-starter-web`, which in Spring Boot 4 brings Jackson 3 (`tools.jackson.databind`, `isString()`/`asString()`); the `com.fasterxml` package is only on the classpath of apps that use the Dapr SDK.
 
 ## 3. `rawPayload` on the subscriber side in each language (Demo 3)
 
