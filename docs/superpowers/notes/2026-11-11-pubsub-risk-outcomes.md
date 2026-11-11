@@ -43,3 +43,20 @@ Outcome (Demo 1): as designed. `GET /v1.0/metadata` on `shipping` (:3511) lists 
 Outcome: same behaviour as Redis. Demo 5's unchanged apps and `resources/` run against `pubsub.rabbitmq` (`autoAck: "false"`, `requeueInFailure: "false"`, no `enableDeadLetter`). Routing by priority works, the poison order was delivered **4 times** (first try + 3 retries from `resiliency.yaml`) and then dead-lettered once to `/orders/dead`, in .NET, Python and Java; the good orders were never dead-lettered. The count stayed at 4 after a 3 s settle wait, so RabbitMQ did not requeue it. Dapr created exchanges `orders` and `orders-dead` (the topic names) and durable queues `shipping-orders` and `shipping-orders-dead` (`<app-id>-<topic>`), checked through the management API at :15672.
 
 Gotcha in `tests/pubsub/start-rabbitmq.sh`: pinging with a plain `docker exec` runs as root and creates a root-owned `/var/lib/rabbitmq/.erlang.cookie` before the broker starts, so the broker crashes with `eacces` (container exits, "did not become ready"). The script and the smoke test ping with `docker exec -u rabbitmq`. Pinned image: `rabbitmq:4.4.0-management`.
+
+## Review findings kept on purpose
+
+The `dapr-skills` review skills (`review-pubsub-components`, `review-pubsub-publishing`, `review-pubsub-subscriptions`) were applied by hand to all six .NET and Python demos. No finding needed a code change (Java mirrors the .NET and Python code, so nothing to carry over). These findings were left as they are:
+
+- DPS-SUB-010 (Demo 3, publisher sends `rawPayload` and the `orders-raw` subscription lacks it): the checklist advice is wrong for Dapr 1.19.1. Subscription-side `rawPayload` wraps the message in a CloudEvent with `data_base64` (risk 3); publish-side only is the user's decision.
+- DPS-PUB-012 (Demo 3, `rawPayload: "true"` on publish): the point of the demo is to show what raw publishing drops.
+- Raw-body logging in Demo 3 `shipping` (no `UseCloudEvents()`, no parsing): the learner has to see the envelope as it arrives.
+- The `poison` order and `500 {"status":"RETRY"}` in Demo 5 and 6: the retry-exhaustion path to the dead-letter topic is the lesson.
+- DPS-CFG-001 (info, RabbitMQ `guest:guest` connection string) and an empty `redisPassword`: both are localhost-only demo brokers. Using `secretKeyRef` would hide the one file Demo 6 swaps.
+- DPS-CFG-004 (info, no component `scopes`) and DPS-CFG-007 (info, no `maxLenApprox`/`streamTTL`): extra component metadata would make the Redis-to-RabbitMQ diff harder to read. The `Subscription` files are scoped.
+- DPS-SUB-006 (idempotency): no handler has a side effect beyond logging.
+- Demo 1 and 3 `shipping` handlers read the body without validation (DPS-SUB-008 style): the subject is the wiring, and Dapr always sends a CloudEvent. Demos 4 and 5 show the DROP path for unreadable input.
+- Demo 2 streaming handlers always succeed and do not guard against malformed JSON: spec §3.2 keeps retry and ack timing out of the demo (risk 1).
+- DPS-PUB-007 on bulk publish is satisfied (`FailedEntries` is read); no per-entry metadata is set because .NET `BulkPublishEventAsync` cannot (spec §2).
+- DPS-PUB-011 (info, Python sync `publish_event` inside `async def`) and DPS-PUB-002 (Python `except grpc.RpcError` does not catch `TimeoutError` when no sidecar runs): the routes are `async` to read the request body, and a missing sidecar still ends as a 500, not a swallowed failure.
+- DPS-PUB-009 (info, topic literals repeated): each demo folder reads on its own (spec §4), the same reason `OrderApi` is duplicated per demo.
