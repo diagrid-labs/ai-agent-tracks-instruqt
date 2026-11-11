@@ -1,5 +1,6 @@
 import json
 import logging
+from contextlib import asynccontextmanager
 
 import grpc
 from dapr.clients import DaprClient
@@ -13,7 +14,20 @@ FIELDS = ("orderId", "item", "quantity", "priority")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order-api")
 
-app = FastAPI()
+client: DaprClient
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # One Dapr client for the app's lifetime, closed on shutdown (the secrets demos open one
+    # per request because they make a single call; a publisher reuses its connection).
+    global client
+    client = DaprClient()
+    yield
+    client.close()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/orders")
@@ -24,13 +38,12 @@ async def publish_order(request: Request):
     try:
         # The app only knows the pub/sub component's name and the topic, never the broker
         # behind them. Dapr wraps the order in a CloudEvent and sends it to every subscriber.
-        with DaprClient() as client:
-            client.publish_event(
-                pubsub_name=PUBSUB,
-                topic_name=TOPIC,
-                data=json.dumps(order),
-                data_content_type="application/json",
-            )
+        client.publish_event(
+            pubsub_name=PUBSUB,
+            topic_name=TOPIC,
+            data=json.dumps(order),
+            data_content_type="application/json",
+        )
     except grpc.RpcError as e:
         # Show the failure instead of hiding it: the gRPC status name tells the caller why
         # Dapr rejected the publish.

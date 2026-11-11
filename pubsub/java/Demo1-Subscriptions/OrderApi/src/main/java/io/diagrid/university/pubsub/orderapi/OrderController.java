@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.dapr.client.DaprClient;
 import io.dapr.client.DaprClientBuilder;
 import io.dapr.exceptions.DaprException;
+import io.grpc.StatusRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -46,15 +47,14 @@ public class OrderController {
         return ResponseEntity.ok(result);
     }
 
-    // Show the failure instead of hiding it: the SDK message starts with the gRPC status
-    // name ("NOT_FOUND: ..."). Use contains rather than startsWith in case the message gets
-    // wrapped, and fall back to INTERNAL for anything unknown.
+    // Show the failure instead of hiding it: the DaprException wraps a gRPC
+    // StatusRuntimeException, whose status code name ("NOT_FOUND") is the same name the
+    // other languages report. INTERNAL only when no gRPC status is in the cause chain.
     private static ResponseEntity<Map<String, Object>> failure(DaprException e, String orderId) {
-        String message = e.getMessage() == null ? "" : e.getMessage();
         String error = "INTERNAL";
-        for (String name : new String[] {"NOT_FOUND", "PERMISSION_DENIED", "INVALID_ARGUMENT", "UNAVAILABLE"}) {
-            if (message.contains(name)) {
-                error = name;
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof StatusRuntimeException grpc) {
+                error = grpc.getStatus().getCode().name();
                 break;
             }
         }

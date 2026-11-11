@@ -47,7 +47,15 @@ assert_eq "PROGRAMMATIC" "$(sub_type 3512)" "invoicing subscription is PROGRAMMA
 resp="$(post_json http://localhost:5101/orders "{\"orderId\":\"$RUN-2\"}")"
 assert_eq "400" "${resp%% *}" "malformed order returns 400"
 assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "malformed order body is INVALID_ORDER"
+resp="$(post_json http://localhost:5101/orders \
+  "{\"orderId\":\"$RUN-3\",\"item\":\"coffee-beans\",\"quantity\":\"2\",\"priority\":\"standard\"}")"
+assert_eq "400" "${resp%% *}" "string quantity returns 400"
+assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "string quantity body is INVALID_ORDER"
+resp="$(post_json http://localhost:5101/orders "not json")"
+assert_eq "400" "${resp%% *}" "non-JSON body returns 400"
+assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "non-JSON body is INVALID_ORDER"
 sleep 3
 assert_eq "0" "$(count_log Shipping shipping "$RUN-2")" "shipping never saw the malformed order"
+assert_eq "0" "$(count_log Shipping shipping "$RUN-3")" "shipping never saw the string-quantity order"
 
 echo "Demo 1 ($LANG_ARG): all assertions passed"

@@ -47,10 +47,13 @@ static async Task<Order?> ReadOrder(HttpRequest request)
     {
         using var doc = await JsonDocument.ParseAsync(request.Body);
         var root = doc.RootElement;
+        // Every field must be present and of the right JSON type; TryGetInt32 and GetString
+        // throw on the wrong type, so check the kind first.
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("orderId", out var orderId) || orderId.ValueKind != JsonValueKind.String
             || !root.TryGetProperty("item", out var item) || item.ValueKind != JsonValueKind.String
-            || !root.TryGetProperty("quantity", out var quantity) || !quantity.TryGetInt32(out var qty)
+            || !root.TryGetProperty("quantity", out var quantity) || quantity.ValueKind != JsonValueKind.Number
+            || !quantity.TryGetInt32(out var qty)
             || !root.TryGetProperty("priority", out var priority) || priority.ValueKind != JsonValueKind.String)
         {
             return null;
