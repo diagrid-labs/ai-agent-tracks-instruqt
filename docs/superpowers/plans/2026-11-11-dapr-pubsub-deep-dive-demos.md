@@ -237,7 +237,7 @@ Apps: `order-api` 5101/3510; `warehouse` Dapr HTTP 3511, **no `appPort`** in `da
 Apps: `order-api` 5101/3510, `shipping` 5102/3511.
 
 - `subscription-orders.yaml`: topic `orders`, `routes.default: /orders`, `scopes: [shipping]`.
-- `subscription-orders-raw.yaml`: topic `orders-raw`, `routes.default: /orders-raw`, `metadata: { rawPayload: "true" }`, `scopes: [shipping]`.
+- `subscription-orders-raw.yaml`: topic `orders-raw`, `routes.default: /orders-raw`, `scopes: [shipping]`, **no `rawPayload` metadata** (user decision after risk 3, see spec §3.3), with a comment explaining what subscription-side `rawPayload` would do instead (wrap raw messages from non-Dapr producers into a CloudEvent with `data_base64`).
 - `/orders/raw` publishes with metadata `rawPayload: "true"`:
   - .NET `PublishEventAsync("pubsub", "orders-raw", order, new Dictionary<string,string>{{"rawPayload","true"}})`
   - Python `publish_event(..., publish_metadata={"rawPayload": "true"}, data_content_type="application/json")`

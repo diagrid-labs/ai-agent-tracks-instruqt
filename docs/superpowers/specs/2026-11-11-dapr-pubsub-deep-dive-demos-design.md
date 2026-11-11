@@ -148,8 +148,15 @@ subscriber apps receive them.
 
 - The publisher exposes two endpoints *(my call)*: one publishes normally to `orders`, one
   publishes with publish metadata `rawPayload: "true"` to `orders-raw`.
-- The subscriber has two declarative subscriptions. The one for `orders-raw` carries
-  `metadata: { rawPayload: "true" }`, so the sidecar delivers the bare payload.
+- The subscriber has two declarative subscriptions, one per topic. **Neither carries
+  `rawPayload`.** *(Decided by the user on 2026-11-11 after risk 3 was verified: in Dapr
+  1.19.1, `rawPayload: "true"` on a subscription does not pass the bare payload through;
+  it wraps an incoming raw message into a CloudEvent with `data_base64` and
+  `datacontenttype: application/octet-stream`. Publishing with `rawPayload` and
+  subscribing without it is what delivers the bare order JSON.)* A comment in
+  `subscription-orders-raw.yaml`, and the README, explain that subscription-side
+  `rawPayload` is for consuming raw messages from non-Dapr producers, which Dapr then
+  wraps in a CloudEvent.
 - The subscriber endpoints log exactly what arrived on the wire (the raw request body), so
   the learner sees the envelope in one case and only the order in the other. Do not let
   middleware unwrap the envelope before logging (for example .NET `UseCloudEvents()`): the
