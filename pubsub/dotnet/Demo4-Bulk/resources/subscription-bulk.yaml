@@ -14,5 +14,6 @@ spec:
     enabled: true
     maxMessagesCount: 10
     maxAwaitDurationMs: 1000
-  scopes:
-    - shipping
+# scopes sits beside spec, not inside it. Only the app with this app id loads the subscription.
+scopes:
+  - shipping

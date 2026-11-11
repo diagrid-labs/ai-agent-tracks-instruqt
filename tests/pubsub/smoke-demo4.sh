@@ -30,6 +30,10 @@ start_demo "$DEMO" 5101 5102 3510 3511
 wait_for_sidecar 3510
 wait_for_sidecar 3511
 
+# Regression guard: scopes must sit beside spec, so order-api loads no subscription.
+subs="$(curl -s http://localhost:3510/v1.0/metadata | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("subscriptions") or []))')"
+assert_eq "0" "$subs" "order-api sidecar lists no subscriptions (scopes is outside spec)"
+
 # 1. One call publishes 25 orders.
 resp="$(post_json "http://localhost:5101/orders/bulk?count=25&prefix=$RUN" "")"
 assert_eq "200" "${resp%% *}" "POST /orders/bulk returns 200"

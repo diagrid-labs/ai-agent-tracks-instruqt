@@ -12,6 +12,10 @@ start_demo "$DEMO" 5101 5102 3510 3511
 wait_for_sidecar 3510
 wait_for_sidecar 3511
 
+# Regression guard: scopes must sit beside spec, so order-api loads no subscription.
+subs="$(curl -s http://localhost:3510/v1.0/metadata | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("subscriptions") or []))')"
+assert_eq "0" "$subs" "order-api sidecar lists no subscriptions (scopes is outside spec)"
+
 # 1. Three orders: a standard one, an express one, and a poison one that shipping rejects.
 resp="$(post_json http://localhost:5101/orders \
   "{\"orderId\":\"$RUN-1\",\"item\":\"coffee-beans\",\"quantity\":1,\"priority\":\"standard\"}")"
@@ -34,6 +38,12 @@ assert_eq "0" "$(count_log Shipping shipping "shipping standard order $RUN-2")" 
 # 3. Dead-lettering: the poison order is retried, then arrives on orders-dead.
 wait_for_log Shipping shipping "shipping dead-lettered order $RUN-3" 60
 echo "PASS: poison order $RUN-3 was dead-lettered"
+
+# Good orders are never dead-lettered.
+assert_eq "0" "$(count_log Shipping shipping "shipping dead-lettered order $RUN-1")" \
+  "standard order $RUN-1 was not dead-lettered"
+assert_eq "0" "$(count_log Shipping shipping "shipping dead-lettered order $RUN-2")" \
+  "express order $RUN-2 was not dead-lettered"
 
 # 4. Retries: first delivery plus 3 retries from resiliency.yaml. Wait a little so late
 # redeliveries would show up in the count.

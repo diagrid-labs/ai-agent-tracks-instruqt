@@ -26,6 +26,10 @@ wait_for_sidecar 3510
 wait_for_sidecar 3511
 wait_for_sidecar 3512
 
+# Regression guard: scopes must sit beside spec, so order-api loads no subscription.
+subs="$(curl -s http://localhost:3510/v1.0/metadata | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("subscriptions") or []))')"
+assert_eq "0" "$subs" "order-api sidecar lists no subscriptions (scopes is outside spec)"
+
 # 1. A valid order is published to the orders topic.
 resp="$(post_json http://localhost:5101/orders \
   "{\"orderId\":\"$RUN-1\",\"item\":\"coffee-beans\",\"quantity\":2,\"priority\":\"standard\"}")"

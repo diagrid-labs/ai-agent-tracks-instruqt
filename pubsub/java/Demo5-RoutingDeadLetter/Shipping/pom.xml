@@ -15,7 +15,7 @@
   <artifactId>shipping</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>Shipping</name>
-  <description>Receives orders in batches through a bulk Dapr subscription</description>
+  <description>Routes orders by priority and receives dead-lettered orders</description>
 
   <properties>
     <java.version>17</java.version>

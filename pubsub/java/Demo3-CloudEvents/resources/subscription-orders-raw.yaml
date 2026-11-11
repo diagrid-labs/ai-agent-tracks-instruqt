@@ -13,5 +13,6 @@ spec:
   # rawPayload: "true" on a subscription does the opposite job: it is for consuming raw
   # messages from non-Dapr producers. Dapr then wraps each one into a CloudEvent with the
   # bytes in data_base64 and datacontenttype application/octet-stream.
-  scopes:
-    - shipping
+# scopes sits beside spec, not inside it. Only the app with this app id loads the subscription.
+scopes:
+  - shipping

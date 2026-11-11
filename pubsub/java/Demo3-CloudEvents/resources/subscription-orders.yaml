@@ -8,5 +8,6 @@ spec:
   topic: orders
   routes:
     default: /orders
-  scopes:
-    - shipping
+# scopes sits beside spec, not inside it. Only the app with this app id loads the subscription.
+scopes:
+  - shipping
