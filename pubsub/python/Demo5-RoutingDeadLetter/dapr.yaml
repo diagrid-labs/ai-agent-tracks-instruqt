@@ -1,0 +1,17 @@
+version: 1
+common:
+  # Two folders: the shared pubsub component and this demo's own subscription file.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: order-api
+    appDirPath: ./OrderApi
+    appPort: 5101
+    daprHTTPPort: 3510
+    command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5101"]
+  - appID: shipping
+    appDirPath: ./Shipping
+    appPort: 5102
+    daprHTTPPort: 3511
+    command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5102"]
