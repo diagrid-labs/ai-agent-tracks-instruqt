@@ -17,7 +17,7 @@ app.MapPost("/orders", (HttpRequest request, DaprClient daprClient, ILogger<Prog
 
 app.MapPost("/orders/raw", (HttpRequest request, DaprClient daprClient, ILogger<Program> logger) =>
     // The rawPayload publish metadata tells Dapr not to add the envelope: the order itself is
-    // the message on the topic. The subscriber has to expect the same (see subscription-orders-raw.yaml).
+    // the message on the topic. The subscription needs no rawPayload of its own (see subscription-orders-raw.yaml).
     Publish(request, daprClient, logger, "orders-raw",
         metadata: new Dictionary<string, string> { { "rawPayload", "true" } }));
 

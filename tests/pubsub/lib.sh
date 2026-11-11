@@ -190,7 +190,7 @@ count_log() {
 # Prints "<status> <body>".
 post_json() {
   local out status body
-  out="$(curl -s -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' -d "$2" "$1")" \
+  out="$(curl -s --max-time 30 -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' -d "$2" "$1")" \
     || die "POST $1 failed"
   status="$(echo "$out" | tail -n 1)"
   body="$(echo "$out" | sed '$d')"

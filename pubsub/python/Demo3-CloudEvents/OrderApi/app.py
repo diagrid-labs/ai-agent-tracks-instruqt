@@ -38,7 +38,7 @@ async def publish_order(request: Request):
 @app.post("/orders/raw")
 async def publish_raw_order(request: Request):
     # The rawPayload publish metadata tells Dapr not to add the envelope: the order itself is
-    # the message on the topic. The subscriber has to expect the same (see subscription-orders-raw.yaml).
+    # the message on the topic. The subscription needs no rawPayload of its own (see subscription-orders-raw.yaml).
     return await publish(request, "orders-raw", metadata={"rawPayload": "true"})
 
 
@@ -52,7 +52,7 @@ async def publish(request: Request, topic: str, metadata: dict | None):
         client.publish_event(
             pubsub_name=PUBSUB,
             topic_name=topic,
-            data=json.dumps(order),
+            data=json.dumps(order, separators=(",", ":")),
             data_content_type="application/json",
             publish_metadata=metadata,
         )

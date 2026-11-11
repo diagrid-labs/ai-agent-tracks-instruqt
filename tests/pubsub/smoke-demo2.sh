@@ -22,7 +22,7 @@ assert_ports_free 5101 3510 3511
 
 start_demo "$DEMO" 5101 3510 3511
 wait_for_sidecar 3510
-# warehouse has no appPort: if /v1.0/healthz never returns 204, see the report.
+# warehouse has no appPort; see docs/superpowers/notes/2026-11-11-pubsub-risk-outcomes.md if /v1.0/healthz never returns 204.
 wait_for_sidecar 3511
 
 # The stream is open once the metadata lists a STREAMING subscription. Waiting for it

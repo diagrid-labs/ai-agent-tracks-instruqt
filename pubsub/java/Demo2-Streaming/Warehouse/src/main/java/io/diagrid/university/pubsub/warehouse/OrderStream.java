@@ -30,7 +30,8 @@ public class OrderStream implements ApplicationRunner {
         // event is deserialized into an Order and the stream acknowledges it for us, so this
         // demo always reports success.
         subscription = client.subscribeToTopic("pubsub", "orders", TypeRef.get(Order.class))
-                .subscribe(order -> log.info("warehouse received order {}", order.orderId()));
+                .subscribe(order -> log.info("warehouse received order {}", order.orderId()),
+                        error -> log.error("warehouse stream ended", error));
 
         // The Flux alone does not keep the JVM alive: its threads are daemon threads and
         // there is no web server. The main thread waits here until SIGTERM closes the context.

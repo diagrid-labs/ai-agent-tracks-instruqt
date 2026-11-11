@@ -5,7 +5,8 @@ set -euo pipefail
 
 docker rm -f rabbitmq >/dev/null 2>&1 || true
 # 5672 is AMQP (what Dapr connects to), 15672 is the management UI and API (guest/guest).
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4.4.0-management >/dev/null
+# Both are bound to 127.0.0.1 only, so the default guest credentials are not exposed.
+docker run -d --name rabbitmq -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672 rabbitmq:4.4.0-management >/dev/null
 
 # Ping as the rabbitmq user: a root `docker exec` creates a root-owned .erlang.cookie before
 # the broker starts, and the broker then crashes with eacces.

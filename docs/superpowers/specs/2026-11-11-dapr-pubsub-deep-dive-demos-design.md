@@ -1,7 +1,7 @@
 # Design: Dapr pub/sub deep-dive demos (`pubsub/`)
 
 **Date:** 2026-11-11
-**Status:** Draft, awaiting approval
+**Status:** Approved 2026-11-11; implemented on feat/pubsub-deep-dive-demos
 **Scope:** demo source code in this repo only. The learner-facing track content
 (`assignment.md`, Robot suites, setup scripts in `dapr-university-instruqt`) is a later
 session.
@@ -203,7 +203,8 @@ subscriber apps receive them.
   retries run out, the message goes to `orders-dead`. Use the retry-exhaustion path, not a
   `DROP` response (see §7 risk 4).
 - Publisher sends a mixed set on request: some `standard`, some `express`, one `poison`
-  *(my call)*.
+  *(my call)*. Built as three separate `POST /orders` calls instead of a "mixed set on
+  request", so OrderApi stays identical to Demo 1.
 
 ### 3.6 Demo 6: swap the provider
 
@@ -294,9 +295,9 @@ Checked on 2026-11-11. Re-check and pin exact versions when building.
 |---|---|---|
 | Dapr runtime | 1.19.1 (2026-10-31) | |
 | Dapr CLI | 1.19.1 (2026-10-22) | |
-| .NET `Dapr.Client`, `Dapr.AspNetCore`, `Dapr.Messaging` | 1.19.0 | `Dapr.Messaging` only in Demo 2 |
-| Python `dapr`, `dapr-ext-fastapi` | 1.19.0 | |
-| Java `io.dapr:dapr-sdk`, `dapr-sdk-springboot` | 1.19.0 | |
+| .NET `Dapr.Client`, `Dapr.AspNetCore`, `Dapr.Messaging` | 1.19.1 | `Dapr.Messaging` only in Demo 2 |
+| Python `dapr[fastapi]` | 1.19.0 | The FastAPI extension moved into the `dapr` package in 1.19; `dapr-ext-fastapi` is no longer a separate dependency |
+| Java `io.dapr:dapr-sdk`, `dapr-sdk-springboot` | 1.19.0 | Spring Boot 4.0.8 |
 
 The secrets demos stay on 1.18. Don't upgrade them as part of this work.
 

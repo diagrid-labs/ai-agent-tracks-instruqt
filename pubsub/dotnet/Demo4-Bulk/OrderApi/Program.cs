@@ -42,7 +42,7 @@ app.MapPost("/orders/bulk", async (string? count, string? prefix, DaprClient dap
         return Results.Json(new { error = "INVALID_COUNT" }, statusCode: 400);
     }
     var orders = Enumerable.Range(1, n)
-        .Select(i => new Order($"{prefix ?? "o"}-{i}", "coffee-beans", 1, "standard"))
+        .Select(i => new Order($"{(string.IsNullOrEmpty(prefix) ? "o" : prefix)}-{i}", "coffee-beans", 1, "standard"))
         .ToList();
 
     try

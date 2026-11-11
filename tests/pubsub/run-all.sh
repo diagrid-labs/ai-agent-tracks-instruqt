@@ -7,11 +7,22 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 DEMOS="1 2 3 4 5 6"
 LANGS="dotnet python java"
 
+usage() {
+  echo "usage: run-all.sh [--demo 1-6] [--lang dotnet|python|java]" >&2
+  exit 2
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --demo) DEMOS="$2"; shift 2 ;;
-    --lang) LANGS="$2"; shift 2 ;;
-    *) echo "usage: run-all.sh [--demo N] [--lang dotnet|python|java]" >&2; exit 2 ;;
+    --demo)
+      [ $# -ge 2 ] || usage
+      case "$2" in [1-6]) DEMOS="$2" ;; *) usage ;; esac
+      shift 2 ;;
+    --lang)
+      [ $# -ge 2 ] || usage
+      case "$2" in dotnet|python|java) LANGS="$2" ;; *) usage ;; esac
+      shift 2 ;;
+    *) usage ;;
   esac
 done
 

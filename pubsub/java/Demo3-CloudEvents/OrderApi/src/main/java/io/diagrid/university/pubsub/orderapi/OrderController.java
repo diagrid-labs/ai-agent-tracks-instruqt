@@ -33,7 +33,7 @@ public class OrderController {
     }
 
     // The rawPayload publish metadata tells Dapr not to add the envelope: the order itself is
-    // the message on the topic. The subscriber has to expect the same (see subscription-orders-raw.yaml).
+    // the message on the topic. The subscription needs no rawPayload of its own (see subscription-orders-raw.yaml).
     @PostMapping("/orders/raw")
     public ResponseEntity<Map<String, Object>> publishRawOrder(@RequestBody(required = false) String body) {
         return publish(body, "orders-raw", Map.of("rawPayload", "true"));

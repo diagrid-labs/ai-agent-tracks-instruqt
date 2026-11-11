@@ -8,6 +8,7 @@ In Instruqt the sandbox setup script prepares everything below for you. Use this
 
 - [Dapr CLI](https://docs.dapr.io/getting-started/install-dapr-cli/) 1.19.1 and a completed `dapr init --runtime-version 1.19.1` (Docker required, it starts Redis)
 - Docker, for the RabbitMQ container used in challenge 6
+- `lsof`, which the smoke-test scripts use to stop the demo apps
 - The runtime for the language you want to run: .NET SDK 10, Python 3.12 with [uv](https://docs.astral.sh/uv/), or Java 17 with Maven (the Java demos use Spring Boot 4.0.8)
 
 The shell commands below assume a POSIX shell (Git Bash, WSL, macOS or Linux) with `python3` available. The track itself runs on a Linux sandbox.
@@ -26,7 +27,7 @@ Every demo uses the same app IDs and ports in every language, so run one demo at
 # Removing any existing container first makes this block safe to run again.
 docker rm -f rabbitmq >/dev/null 2>&1 || true
 # 5672 is AMQP (what Dapr connects to), 15672 is the management UI and API.
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:4.4.0-management
+docker run -d --name rabbitmq -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672 rabbitmq:4.4.0-management
 # Wait up to 60 seconds for the broker to answer. Ping as the rabbitmq user: a root
 # `docker exec` creates a root-owned .erlang.cookie before the broker starts, and the
 # broker then crashes.
@@ -36,7 +37,7 @@ for _ in $(seq 1 60); do
 done
 ```
 
-The management UI is at <http://localhost:15672> (user `guest`, password `guest`). These credentials only work from localhost and are fine for a demo.
+The management UI is at <http://localhost:15672> (user `guest`, password `guest`). The ports are bound to localhost only, so the default guest/guest credentials are fine for a demo.
 
 `bash tests/pubsub/start-rabbitmq.sh` does the same and prints when the broker is ready. Stop it afterwards with `docker rm -f rabbitmq`.
 
@@ -209,4 +210,4 @@ bash tests/pubsub/run-all.sh --demo 5              # one demo, all languages
 bash tests/pubsub/run-all.sh --demo 3 --lang java  # one demo, one language
 ```
 
-Demo 6 needs RabbitMQ: run `bash tests/pubsub/start-rabbitmq.sh` first. Each script checks that ports 5101 to 5103 and 3510 to 3512 are free before it starts, and uses order IDs unique to the run, so leftover messages in Redis from an earlier run do not matter.
+Demo 6 needs RabbitMQ: run `bash tests/pubsub/start-rabbitmq.sh` first. Each script checks that the ports its own demo uses are free before it starts, and uses order IDs unique to the run, so leftover messages in Redis from an earlier run do not matter.

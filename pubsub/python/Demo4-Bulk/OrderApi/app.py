@@ -61,6 +61,7 @@ async def publish_bulk(count: str | None = None, prefix: str = "o"):
         n = 0
     if not 1 <= n <= 100:
         return JSONResponse(status_code=400, content={"error": "INVALID_COUNT"})
+    prefix = prefix or "o"
     orders = [
         {"orderId": f"{prefix}-{i}", "item": "coffee-beans", "quantity": 1, "priority": "standard"}
         for i in range(1, n + 1)

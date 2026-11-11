@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("shipping")
@@ -14,6 +15,10 @@ app = FastAPI()
 async def receive_order(request: Request):
     event = await request.json()
     # The order is in the CloudEvent's "data" field.
-    logger.info("shipping received order %s", event["data"]["orderId"])
+    data = event.get("data") if isinstance(event, dict) else None
+    order_id = data.get("orderId") if isinstance(data, dict) else None
+    if not isinstance(order_id, str):
+        return JSONResponse(status_code=400, content={"error": "INVALID_EVENT"})
+    logger.info("shipping received order %s", order_id)
     # SUCCESS tells Dapr the message is handled, so it is not redelivered.
     return {"status": "SUCCESS"}

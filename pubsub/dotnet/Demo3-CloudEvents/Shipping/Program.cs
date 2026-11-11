@@ -12,7 +12,7 @@ app.MapPost("/orders", async (HttpRequest request, ILogger<Program> logger) =>
     return Results.Json(new { status = "SUCCESS" });
 });
 
-// /orders-raw is a rawPayload subscription: the body is the order itself, no envelope.
+// /orders-raw receives what the publisher put on the topic: the order itself, no envelope.
 app.MapPost("/orders-raw", async (HttpRequest request, ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(request.Body);
