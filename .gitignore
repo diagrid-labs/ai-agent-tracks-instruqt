@@ -159,6 +159,10 @@ secrets/**/target/
 # Sidecar and app logs that `dapr run -f .` writes into each demo folder.
 secrets/**/.dapr/
 
+# Dapr pub/sub track: Maven build output and `dapr run -f .` logs.
+pubsub/**/target/
+pubsub/**/.dapr/
+
 ####################
 # OS / Misc
 ####################
