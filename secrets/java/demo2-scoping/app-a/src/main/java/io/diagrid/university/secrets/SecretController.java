@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
-// AppA and AppB have exactly the same code. Only the sidecar next to each of them is configured
+// app-a and app-b have exactly the same code. Only the sidecar next to each of them is configured
 // differently, and that decides which secrets each one may read.
 @RestController
 public class SecretController {

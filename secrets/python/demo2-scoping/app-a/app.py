@@ -8,7 +8,7 @@ SECRET_STORE = "secretstore"
 app = FastAPI()
 
 
-# AppA and AppB have exactly the same code. Only the sidecar next to each of them is configured
+# app-a and app-b have exactly the same code. Only the sidecar next to each of them is configured
 # differently, and that decides which secrets each one may read. Even the port comes from
 # dapr.yaml (uvicorn --port), not from the code.
 @app.get("/secret/{name}")
