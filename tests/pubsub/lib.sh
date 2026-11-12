@@ -187,6 +187,24 @@ count_log() {
   return 0
 }
 
+# assert_last_log_is_warning <app-dir> <app> <needle> <message>
+# Checks the log level of the newest line containing <needle>. Each language prints the level
+# its own way: Python "WARNING:<logger>:", Spring Boot " WARN ", and the .NET console logger
+# "warn: <category>" on the line before the message.
+assert_last_log_is_warning() {
+  local log level
+  log="$(app_log "$1" "$2")"
+  [ -n "$log" ] || die "$4 (no $2 log)"
+  level="$(awk -v needle="$3" '
+    index($0, needle) { line = $0; before = prev }
+    { prev = $0 }
+    END {
+      if (line ~ /WARNING:/ || line ~ / WARN / || before ~ /warn: /) print "WARNING"
+      else print "NOT WARNING"
+    }' "$log")"
+  assert_eq "WARNING" "$level" "$4"
+}
+
 # Prints "<status> <body>".
 post_json() {
   local out status body

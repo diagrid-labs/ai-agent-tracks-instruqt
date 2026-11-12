@@ -71,6 +71,13 @@ assert_eq '{"statuses": [{"entryId": "e1", "status": "SUCCESS"}, {"entryId": "e2
   "$(echo "${resp#* }" | json_norm)" "good entry is SUCCESS, unreadable entry is DROP, in entry order"
 wait_for_log Shipping shipping "shipping dropped unreadable entry e2"
 echo "PASS: shipping logged the dropped entry"
+# A JSON null event is unreadable, and a non-string entryId is answered as "". The bad entry
+# does not fail the batch: e3 after it is still SUCCESS.
+resp="$(post_json http://localhost:5102/orders/bulk \
+  "{\"entries\":[{\"entryId\":7,\"event\":\"null\",\"contentType\":\"application/cloudevents+json\"},{\"entryId\":\"e3\",\"event\":{\"data\":{\"orderId\":\"$RUN-good3\"},\"datacontenttype\":\"application/json\",\"id\":\"$RUN-e3\",\"source\":\"smoke-test\",\"specversion\":\"1.0\",\"type\":\"com.dapr.event.sent\"},\"contentType\":\"application/cloudevents+json\"}],\"topic\":\"orders\"}")"
+assert_eq "200" "${resp%% *}" "bulk body with a null event returns 200"
+assert_eq '{"statuses": [{"entryId": "", "status": "DROP"}, {"entryId": "e3", "status": "SUCCESS"}]}' \
+  "$(echo "${resp#* }" | json_norm)" "null event is DROP with entryId \"\", the next entry is SUCCESS"
 
 # A body that is not a bulk envelope at all is a failed delivery.
 resp="$(post_json http://localhost:5102/orders/bulk "this is not json")"

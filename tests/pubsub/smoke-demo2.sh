@@ -68,6 +68,9 @@ resp="$(post_json http://localhost:5101/orders \
 assert_eq "200" "${resp%% *}" "POST /orders after the unreadable message returns 200"
 wait_for_log Warehouse warehouse "warehouse received order $RUN-2"
 echo "PASS: the stream survived the unreadable message"
+# Only the Java warehouse logs "warehouse stream ended" (its Flux reports the end of the stream
+# to the app; the .NET and Python SDKs handle it internally), so this check is meaningful for
+# Java only and trivially true for the others.
 assert_eq "0" "$(count_log Warehouse warehouse "warehouse stream ended")" "the stream did not end"
 
 echo "Demo 2 ($LANG_ARG): all assertions passed"

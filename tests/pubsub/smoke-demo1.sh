@@ -55,6 +55,10 @@ resp="$(post_json http://localhost:5101/orders \
   "{\"orderId\":\"$RUN-3\",\"item\":\"coffee-beans\",\"quantity\":\"2\",\"priority\":\"standard\"}")"
 assert_eq "400" "${resp%% *}" "string quantity returns 400"
 assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "string quantity body is INVALID_ORDER"
+resp="$(post_json http://localhost:5101/orders \
+  "{\"orderId\":\"$RUN-6\",\"item\":\"coffee-beans\",\"quantity\":2147483648,\"priority\":\"standard\"}")"
+assert_eq "400" "${resp%% *}" "quantity above the 32-bit int range returns 400"
+assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "quantity above int range is INVALID_ORDER"
 resp="$(post_json http://localhost:5101/orders "not json")"
 assert_eq "400" "${resp%% *}" "non-JSON body returns 400"
 assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "non-JSON body is INVALID_ORDER"
@@ -66,6 +70,7 @@ sleep 3
 assert_eq "0" "$(count_log Shipping shipping "$RUN-2")" "shipping never saw the malformed order"
 assert_eq "0" "$(count_log Shipping shipping "$RUN-3")" "shipping never saw the string-quantity order"
 assert_eq "0" "$(count_log Shipping shipping "$RUN-4")" "shipping never saw the trailing-content order"
+assert_eq "0" "$(count_log Shipping shipping "$RUN-6")" "shipping never saw the out-of-range quantity order"
 
 # 5. Shipping drops an event it cannot read: 200 DROP, so Dapr does not redeliver it.
 # These post straight to the app, no sidecar involved.
@@ -76,19 +81,30 @@ assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-JSON even
 resp="$(post_json http://localhost:5102/orders "[]")"
 assert_eq "200" "${resp%% *}" "non-object event returns 200"
 assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-object event is DROP"
-# Shipping reads the body with the CloudEvents SDK, so an order in "data" is not enough: without
-# id, source, type and specversion it is not a CloudEvent.
+resp="$(post_json http://localhost:5102/orders "null")"
+assert_eq "200" "${resp%% *}" "a JSON null event returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "a JSON null event is DROP"
+# Shipping reads the body with the CloudEvents SDK, so an order in "data" is not enough: it is
+# not a CloudEvent without the required attributes (here none of them are present).
 resp="$(post_json http://localhost:5102/orders "{\"data\":{\"orderId\":\"$RUN-5\"}}")"
 assert_eq "200" "${resp%% *}" "object that is not a CloudEvent returns 200"
 assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "object that is not a CloudEvent is DROP"
+# A complete CloudEvent followed by more content is not one JSON value, so it is unreadable too.
+resp="$(post_json http://localhost:5102/orders \
+  "{\"specversion\":\"1.0\",\"id\":\"$RUN-7\",\"source\":\"smoke-test\",\"type\":\"com.dapr.event.sent\",\"datacontenttype\":\"application/json\",\"data\":{\"orderId\":\"$RUN-7\"}} x")"
+assert_eq "200" "${resp%% *}" "CloudEvent followed by trailing content returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "CloudEvent followed by trailing content is DROP"
 i=0
-while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -lt $((before + 3)) ]; do
+while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -lt $((before + 5)) ]; do
   sleep 1
   i=$((i + 1))
 done
 after="$(count_log Shipping shipping "shipping dropped unreadable event")"
-[ "$after" -ge $((before + 3)) ] || die "expected 3 more 'shipping dropped unreadable event' lines, got $((after - before))"
+[ "$after" -ge $((before + 5)) ] || die "expected 5 more 'shipping dropped unreadable event' lines, got $((after - before))"
 assert_eq "0" "$(count_log Shipping shipping "shipping received order $RUN-5")" "shipping did not accept the non-CloudEvent order"
-echo "PASS: shipping logged the three dropped events"
+assert_eq "0" "$(count_log Shipping shipping "shipping received order $RUN-7")" "shipping did not accept the trailing-content event"
+echo "PASS: shipping logged the five dropped events"
+assert_last_log_is_warning Shipping shipping "shipping dropped unreadable event" \
+  "'shipping dropped unreadable event' is logged at warning level"
 
 echo "Demo 1 ($LANG_ARG): all assertions passed"

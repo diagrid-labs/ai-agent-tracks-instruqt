@@ -6,6 +6,11 @@ source "$(dirname "$0")/lib.sh" "$@"
 DEMO="$ROOT/pubsub/$LANG_ARG/Demo5-RoutingDeadLetter"
 RUN="$(run_id)"
 
+# json_norm round-trips JSON through python3 (key order preserved) so spacing never matters.
+json_norm() {
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read())))'
+}
+
 assert_ports_free 5101 5102 3510 3511
 
 start_demo "$DEMO" 5101 5102 3510 3511
@@ -50,5 +55,21 @@ assert_eq "0" "$(count_log Shipping shipping "shipping dead-lettered order $RUN-
 sleep 3
 assert_eq "4" "$(count_log Shipping shipping "shipping rejected order $RUN-3")" \
   "poison order $RUN-3 was delivered 4 times (first try + 3 retries)"
+
+# 5. Shipping drops an event it cannot read: 200 DROP, so Dapr does not redeliver it.
+# This posts straight to the app, no sidecar involved.
+before="$(count_log Shipping shipping "shipping dropped unreadable event")"
+resp="$(post_json http://localhost:5102/orders/express "{\"data\":{\"orderId\":\"$RUN-4\"}}")"
+assert_eq "200" "${resp%% *}" "unreadable event on /orders/express returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "unreadable event on /orders/express is DROP"
+i=0
+while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -le "$before" ]; do
+  sleep 1
+  i=$((i + 1))
+done
+[ "$(count_log Shipping shipping "shipping dropped unreadable event")" -gt "$before" ] \
+  || die "'shipping dropped unreadable event' not logged after 30s"
+assert_eq "0" "$(count_log Shipping shipping "shipping express order $RUN-4")" "shipping did not accept the unreadable event"
+echo "PASS: shipping logged the dropped event"
 
 echo "Demo 5 ($LANG_ARG): all assertions passed"
