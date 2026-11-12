@@ -2,6 +2,7 @@ package io.diagrid.university.pubsub.warehouse;
 
 import io.dapr.client.DaprPreviewClient;
 import io.dapr.utils.TypeRef;
+import io.grpc.Status;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +39,7 @@ public class OrderStream implements ApplicationRunner {
         // the whole Flux with an error, which would close the stream.
         subscription = client.subscribeToTopic("pubsub", "orders", TypeRef.BYTE_ARRAY)
                 .subscribe(this::receiveOrder,
-                        error -> log.error("warehouse stream ended", error),
+                        this::streamFailed,
                         () -> log.info("warehouse stream closed by the sidecar"));
         // run() returns straight away. spring.main.keep-alive keeps the JVM running (the
         // stream's threads are daemon threads and there is no web server) until SIGTERM.
@@ -63,6 +64,18 @@ public class OrderStream implements ApplicationRunner {
             return orderId.isString() ? orderId.asString() : null;
         } catch (JacksonException e) {
             return null;
+        }
+    }
+
+    // A sidecar that shuts down (dapr stop, Ctrl+C) ends the stream with UNKNOWN "stream closed",
+    // usually before this app gets its own SIGTERM. That is a normal stop, not an error. Any
+    // other error, such as the connection to the sidecar dropping, ends the stream for good.
+    private void streamFailed(Throwable error) {
+        Status status = Status.fromThrowable(error);
+        if (status.getCode() == Status.Code.UNKNOWN && "stream closed".equals(status.getDescription())) {
+            log.info("warehouse stream closed by the sidecar");
+        } else {
+            log.error("warehouse stream ended", error);
         }
     }
 
