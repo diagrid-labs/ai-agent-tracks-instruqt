@@ -11,7 +11,8 @@ app.MapSubscribeHandler();
 app.MapPost("/orders", (Order order, ILogger<Program> logger) =>
 {
     logger.LogInformation("invoicing received order {OrderId}", order.OrderId);
-    return Results.Ok();
+    // Any 2xx tells Dapr the message is handled; SUCCESS says so explicitly, like the other subscribers.
+    return TypedResults.Ok(new { status = "SUCCESS" });
 })
 // The subscription lives in code: pub/sub component `pubsub`, topic `orders`.
 .WithTopic("pubsub", "orders");

@@ -4,25 +4,25 @@ var app = WebApplication.CreateBuilder(args).Build();
 
 // There is no Dapr code here and no UseCloudEvents(): the route is wired only by
 // resources/subscription-bulk.yaml, and Dapr POSTs a batch of messages as one request.
-app.MapPost("/orders/bulk", async (HttpRequest request, ILogger<Program> logger) =>
+app.MapPost("/orders/bulk", async Task<IResult> (HttpRequest request, ILogger<Program> logger,
+    CancellationToken cancellationToken) =>
 {
     // The body is {"entries": [{"entryId", "event", ...}, ...], ...}: one entry per message.
-    JsonElement entries;
     try
     {
-        using var doc = await JsonDocument.ParseAsync(request.Body);
+        using var doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
         if (doc.RootElement.ValueKind != JsonValueKind.Object
-            || !doc.RootElement.TryGetProperty("entries", out entries)
+            || !doc.RootElement.TryGetProperty("entries", out var entries)
             || entries.ValueKind != JsonValueKind.Array)
         {
-            return Results.Json(new { error = "INVALID_BULK_REQUEST" }, statusCode: 400);
+            return TypedResults.BadRequest(new { error = "INVALID_BULK_REQUEST" });
         }
-        return Results.Json(new { statuses = Handle(entries, logger) });
+        return TypedResults.Ok(new { statuses = Handle(entries, logger) });
     }
     catch (JsonException)
     {
         // Not a bulk envelope at all: a non-2xx answer makes Dapr treat the delivery as failed.
-        return Results.Json(new { error = "INVALID_BULK_REQUEST" }, statusCode: 400);
+        return TypedResults.BadRequest(new { error = "INVALID_BULK_REQUEST" });
     }
 });
 
@@ -30,10 +30,10 @@ app.Run();
 
 // Bulk subscriptions are acknowledged per entry: Dapr redelivers only the entries that
 // are not SUCCESS.
-static List<object> Handle(JsonElement entries, ILogger logger)
+static List<BulkEntryStatus> Handle(JsonElement entries, ILogger logger)
 {
     var ids = new List<string>();
-    var statuses = new List<object>();
+    var statuses = new List<BulkEntryStatus>();
     foreach (var entry in entries.EnumerateArray())
     {
         var entryId = entry.ValueKind == JsonValueKind.Object
@@ -43,12 +43,12 @@ static List<object> Handle(JsonElement entries, ILogger logger)
         if (orderId is null)
         {
             // DROP, not RETRY: a malformed entry will not parse any better on a redelivery.
-            logger.LogInformation("shipping dropped unreadable entry {EntryId}", entryId);
-            statuses.Add(new { entryId, status = "DROP" });
+            logger.LogWarning("shipping dropped unreadable entry {EntryId}", entryId);
+            statuses.Add(new BulkEntryStatus(entryId, "DROP"));
             continue;
         }
         ids.Add(orderId);
-        statuses.Add(new { entryId, status = "SUCCESS" });
+        statuses.Add(new BulkEntryStatus(entryId, "SUCCESS"));
     }
     logger.LogInformation("shipping received batch of {Count} orders: {Ids}", ids.Count, string.Join(",", ids));
     return statuses;
@@ -61,17 +61,13 @@ static string? ReadOrderId(JsonElement entry)
     {
         return null;
     }
-    JsonDocument? parsed = null;
     try
     {
         // "event" is the CloudEvent; depending on the content type it is an object or a JSON string.
-        if (evt.ValueKind == JsonValueKind.String)
-        {
-            parsed = JsonDocument.Parse(evt.GetString()!);
-            evt = parsed.RootElement;
-        }
-        return evt.ValueKind == JsonValueKind.Object
-            && evt.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+        using var parsed = evt.ValueKind == JsonValueKind.String ? JsonDocument.Parse(evt.GetString()!) : null;
+        var cloudEvent = parsed?.RootElement ?? evt;
+        return cloudEvent.ValueKind == JsonValueKind.Object
+            && cloudEvent.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
             && data.TryGetProperty("orderId", out var id) && id.ValueKind == JsonValueKind.String
             ? id.GetString() : null;
     }
@@ -79,8 +75,7 @@ static string? ReadOrderId(JsonElement entry)
     {
         return null;
     }
-    finally
-    {
-        parsed?.Dispose();
-    }
 }
+
+// One answer per entry, serialized as {"entryId": ..., "status": ...}.
+record BulkEntryStatus(string EntryId, string Status);

@@ -18,8 +18,10 @@ class OrderStreamService(DaprPublishSubscribeClient client, ILogger<OrderStreamS
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // The app opens the stream itself: pub/sub component `pubsub`, topic `orders`. Dapr
-        // pushes each message down the stream and waits up to 10 seconds for the response
-        // before it redelivers.
+        // pushes each message down the stream and waits for the app's answer.
+        // The handling policy is applied by the SDK, not by Dapr: the SDK cancels the handler's
+        // token after 10 seconds, and answers Retry (Dapr redelivers) if it cannot send the
+        // handler's own answer.
         var options = new DaprSubscriptionOptions(
             new MessageHandlingPolicy(TimeSpan.FromSeconds(10), TopicResponseAction.Retry));
 
@@ -31,10 +33,34 @@ class OrderStreamService(DaprPublishSubscribeClient client, ILogger<OrderStreamS
 
     Task<TopicResponseAction> HandleAsync(TopicMessage message, CancellationToken cancellationToken)
     {
-        // The message holds the CloudEvent data as raw bytes of JSON.
-        using var json = JsonDocument.Parse(message.Data);
-        logger.LogInformation("warehouse received order {OrderId}", json.RootElement.GetProperty("orderId").GetString());
-        // This demo always acknowledges: Success tells Dapr the message is done.
+        var orderId = ReadOrderId(message.Data);
+        if (orderId is null)
+        {
+            logger.LogWarning("warehouse dropped unreadable event");
+        }
+        else
+        {
+            logger.LogInformation("warehouse received order {OrderId}", orderId);
+        }
+        // This demo always acknowledges: Success tells Dapr the message is done. The handler
+        // never throws either, because an exception here would end the whole subscription.
         return Task.FromResult(TopicResponseAction.Success);
+    }
+
+    // The message holds the CloudEvent data as raw bytes of JSON. Returns its orderId, or
+    // null if the data is not a JSON object with a string orderId.
+    static string? ReadOrderId(ReadOnlyMemory<byte> data)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(data);
+            return json.RootElement.ValueKind == JsonValueKind.Object
+                && json.RootElement.TryGetProperty("orderId", out var id) && id.ValueKind == JsonValueKind.String
+                ? id.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

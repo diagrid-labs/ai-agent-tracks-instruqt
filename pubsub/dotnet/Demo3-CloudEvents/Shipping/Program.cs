@@ -4,20 +4,21 @@ var app = WebApplication.CreateBuilder(args).Build();
 // Dapr sends, and the app logs them untouched. The subscriptions live in resources/*.yaml.
 
 // /orders is a normal subscription: the body is a CloudEvent envelope with the order in "data".
-app.MapPost("/orders", async (HttpRequest request, ILogger<Program> logger) =>
+app.MapPost("/orders", async (HttpRequest request, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
-    using var reader = new StreamReader(request.Body);
-    logger.LogInformation("shipping received with envelope: {Body}", await reader.ReadToEndAsync());
+    // leaveOpen: the request body stream belongs to ASP.NET Core, not to this reader.
+    using var reader = new StreamReader(request.Body, leaveOpen: true);
+    logger.LogInformation("shipping received with envelope: {Body}", await reader.ReadToEndAsync(cancellationToken));
     // SUCCESS tells Dapr the message is handled, so it is not redelivered.
-    return Results.Json(new { status = "SUCCESS" });
+    return TypedResults.Ok(new { status = "SUCCESS" });
 });
 
 // /orders-raw receives what the publisher put on the topic: the order itself, no envelope.
-app.MapPost("/orders-raw", async (HttpRequest request, ILogger<Program> logger) =>
+app.MapPost("/orders-raw", async (HttpRequest request, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
-    using var reader = new StreamReader(request.Body);
-    logger.LogInformation("shipping received raw: {Body}", await reader.ReadToEndAsync());
-    return Results.Json(new { status = "SUCCESS" });
+    using var reader = new StreamReader(request.Body, leaveOpen: true);
+    logger.LogInformation("shipping received raw: {Body}", await reader.ReadToEndAsync(cancellationToken));
+    return TypedResults.Ok(new { status = "SUCCESS" });
 });
 
 app.Run();

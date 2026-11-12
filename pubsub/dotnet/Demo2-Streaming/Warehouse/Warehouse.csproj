@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Dapr.Messaging" Version="1.19.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
   </ItemGroup>
 
 </Project>
