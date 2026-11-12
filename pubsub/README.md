@@ -88,9 +88,9 @@ curl -s http://localhost:3511/v1.0/metadata | python3 -m json.tool   # shipping:
 curl -s http://localhost:3512/v1.0/metadata | python3 -m json.tool   # invoicing: "type": "PROGRAMMATIC"
 ```
 
-`shipping` has no Dapr code at all. Its subscription is `resources/subscription-shipping.yaml`.
+`shipping` has no Dapr code at all. Its subscription is `resources/subscription-shipping.yaml`. Dapr delivers each message as a standard CloudEvent, so `shipping` reads it with the open CloudEvents SDK (.NET `CloudNative.CloudEvents`, Python `cloudevents`, Java `io.cloudevents`), not with a Dapr SDK. The Java `shipping` apps get Jackson 2 through `cloudevents-json-jackson`; Spring MVC itself keeps using Jackson 3.
 
-Both subscribers answer `200 {"status": "SUCCESS"}`. `shipping` answers `200 {"status": "DROP"}` for an event it cannot read (not JSON, not an object, or no string `data.orderId`) and logs `shipping dropped unreadable event`. Dapr redelivers on any non-2xx answer except 404, and an unreadable event will not parse any better the next time, so it is dropped instead. How `invoicing` treats an unreadable event is left to its SDK.
+Both subscribers answer `200 {"status": "SUCCESS"}`. `shipping` answers `200 {"status": "DROP"}` for an event it cannot read (not JSON, not a CloudEvent the CloudEvents SDK accepts, for example JSON without `id`, `source`, `type` and `specversion`, or no string `data.orderId`) and logs `shipping dropped unreadable event`. Dapr redelivers on any non-2xx answer except 404, and an unreadable event will not parse any better the next time, so it is dropped instead. How `invoicing` treats an unreadable event is left to its SDK.
 
 ```bash
 curl -s -X POST http://localhost:5102/orders -H 'Content-Type: application/json' -d 'not json'
@@ -115,7 +115,11 @@ warehouse received order o-2001
 curl -s http://localhost:3511/v1.0/metadata | python3 -m json.tool   # warehouse: "type": "STREAMING"
 ```
 
-There is no `Subscription` file and no `appPort`: the app calls the sidecar, not the other way round. Streaming subscriptions are an alpha API in Dapr 1.19. The handler always acknowledges the message, so this demo does not show retry or drop. A message it cannot read (not a JSON object with a string `orderId`) is logged as `warehouse dropped unreadable event` and still acknowledged.
+There is no `Subscription` file and no `appPort`: the app calls the sidecar, not the other way round. Streaming subscriptions are an alpha API in Dapr 1.19. The handler always acknowledges the message, so this demo does not show retry or drop. A message it cannot read (not a JSON object with a string `orderId`) is logged as `warehouse dropped unreadable event` and still acknowledged, and the stream stays open. Publish one straight through order-api's sidecar to see it:
+
+```bash
+curl -s -X POST http://localhost:3510/v1.0/publish/pubsub/orders -H 'Content-Type: text/plain' -d 'not an order'
+```
 
 ### Demo 3: CloudEvents
 
@@ -134,7 +138,13 @@ curl -s -X POST http://localhost:5101/orders/raw -H 'Content-Type: application/j
 shipping received with envelope: {"data":{"item":"coffee-beans","orderId":"o-3001","priority":"standard","quantity":2},"datacontenttype":"application/json","id":"6ce4e90a-c8aa-49bd-83ad-2c9f121cda9e","pubsubname":"pubsub","source":"order-api","specversion":"1.0","time":"2026-11-11T23:17:46+01:00","topic":"orders","traceid":"00-eff559eb42be353e9621e35a4ebd2a54-00779deeb981362a-00","traceparent":"00-eff559eb42be353e9621e35a4ebd2a54-00779deeb981362a-00","tracestate":"","type":"com.dapr.event.sent"}
 ```
 
-The raw publish arrives as the bare order:
+After the raw line, `shipping` reads the same envelope with the open CloudEvents SDK and logs a few of its attributes. This works because Dapr delivers a standard CloudEvent, so no Dapr library is needed to read it:
+
+```text
+shipping parsed CloudEvent id=6ce4e90a-c8aa-49bd-83ad-2c9f121cda9e type=com.dapr.event.sent source=order-api
+```
+
+The raw publish arrives as the bare order, which is not a CloudEvent, so `shipping` only logs it:
 
 ```text
 shipping received raw: {"orderId":"o-3002","item":"coffee-beans","quantity":3,"priority":"express"}
@@ -163,11 +173,11 @@ shipping received batch of 10 orders: ...
 shipping received batch of 5 orders: ...
 ```
 
-The handler answers with a status per entry, so Dapr only redelivers the entries that did not succeed. An entry it cannot read gets `DROP` and the log line `shipping dropped unreadable entry <entryId>`. You can see this by posting a hand-made bulk body to the app:
+The handler answers with a status per entry, so Dapr only redelivers the entries that did not succeed. Each entry's `event` is a CloudEvent, which `shipping` reads with the CloudEvents SDK. An entry it cannot read gets `DROP` and the log line `shipping dropped unreadable entry <entryId>`. You can see this by posting a hand-made bulk body to the app (`e1` is a complete CloudEvent, `e2` is not):
 
 ```bash
 curl -s -X POST http://localhost:5102/orders/bulk -H 'Content-Type: application/json' \
-  -d '{"entries":[{"entryId":"e1","event":{"data":{"orderId":"o-4001","item":"coffee-beans","quantity":1,"priority":"standard"},"specversion":"1.0"},"contentType":"application/cloudevents+json"},{"entryId":"e2","event":{"nothing":"here"},"contentType":"application/cloudevents+json"}],"topic":"orders"}'
+  -d '{"entries":[{"entryId":"e1","event":{"data":{"orderId":"o-4001","item":"coffee-beans","quantity":1,"priority":"standard"},"datacontenttype":"application/json","id":"e1-event","source":"curl","specversion":"1.0","type":"com.dapr.event.sent"},"contentType":"application/cloudevents+json"},{"entryId":"e2","event":{"nothing":"here"},"contentType":"application/cloudevents+json"}],"topic":"orders"}'
 ```
 
 Response: `{"statuses":[{"entryId":"e1","status":"SUCCESS"},{"entryId":"e2","status":"DROP"}]}`.

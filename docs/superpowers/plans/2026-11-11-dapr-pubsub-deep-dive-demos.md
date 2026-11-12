@@ -24,7 +24,7 @@
 - Every `dapr.yaml` (Demos 1–5) uses `common.resourcesPaths: [../resources, ./resources]`.
 - Payload `Order`: `{"orderId": str, "item": str, "quantity": int, "priority": "standard"|"express"}`, keys in that order.
 - Comments in code explain the Dapr concept at the line where it happens, in the voice of `secrets/*/Demo1-ReadSecret`.
-- Subscriber handlers are written against the HTTP contract (read the raw JSON body), except where a task says to use an SDK surface (Demo 1 `invoicing`, Demo 2 `warehouse`, publishers).
+- Subscriber handlers are written against the HTTP contract, except where a task says to use an SDK surface (Demo 1 `invoicing`, Demo 2 `warehouse`, publishers). The declarative `shipping` handlers (Demos 1, 3, 4, 5) read the CloudEvent body with the open **CloudEvents SDK**, not a Dapr SDK, in structured mode (the whole event is the JSON body): .NET `CloudNative.CloudEvents` + `CloudNative.CloudEvents.SystemTextJson` **2.9.0** (`JsonEventFormatter`), Python `cloudevents` **2.2.0** (`cloudevents.core.bindings.http.from_structured_event`; `JSONFormat` for bulk entries), Java `io.cloudevents:cloudevents-core` + `cloudevents-json-jackson` **5.1.0** (`EventFormatProvider` / `JsonFormat`; not `cloudevents-spring`). The Java one brings Jackson 2 next to Spring's Jackson 3; Spring Boot 4.0.8 manages it at 2.21.5 and Spring MVC keeps its Jackson 3 converter (risk note §7).
 
 ## Shared contracts (all languages)
 
@@ -50,6 +50,7 @@
 | 1 | invoicing | `invoicing received order <id>` |
 | 2 | warehouse | `warehouse received order <id>` |
 | 3 | shipping | `shipping received with envelope: <raw request body>` and `shipping received raw: <raw request body>` |
+| 3 | shipping | `shipping parsed CloudEvent id=<id> type=<type> source=<source>` (after the envelope line, `/orders` only; the attributes as the CloudEvents SDK reads them; `type` is `com.dapr.event.sent`) |
 | 4 | shipping | `shipping received batch of <n> orders: <id>,<id>,...` |
 | 5/6 | shipping | `shipping express order <id>`, `shipping standard order <id>`, `shipping rejected order <id>`, `shipping dead-lettered order <id>` |
 | 1, 5/6 | shipping | `shipping dropped unreadable event` |
@@ -58,7 +59,7 @@
 
 Log levels: `shipping dropped unreadable event`, `shipping dropped unreadable entry <id>`, `shipping rejected order <id>` and `warehouse dropped unreadable event` are WARNING; every other line is INFO.
 
-HTTP subscriber handlers (declarative, and Demo 1 `invoicing`) return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`. A declarative handler that cannot read an event (empty body, not JSON, root not an object, no string `data.orderId`) returns `200 {"status": "DROP"}` and logs `shipping dropped unreadable event` (Demos 1 and 5; Demo 4 drops per entry). Dapr retries any non-2xx except 404, and an unreadable event never parses on a redelivery. Demo 1 `invoicing` leaves unreadable events to its SDK. Demo 2 `warehouse` logs `warehouse dropped unreadable event` for a message whose data is not an object with a string `orderId`, and still acknowledges it as success.
+HTTP subscriber handlers (declarative, and Demo 1 `invoicing`) return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`. A declarative handler that cannot read an event (empty body, not JSON, root not an object, not a CloudEvent the CloudEvents SDK accepts, for example no `id`, `source`, `type` or `specversion`, or no string `data.orderId`) returns `200 {"status": "DROP"}` and logs `shipping dropped unreadable event` (Demos 1 and 5; Demo 4 drops per entry). Dapr retries any non-2xx except 404, and an unreadable event never parses on a redelivery. Demo 1 `invoicing` leaves unreadable events to its SDK. Demo 2 `warehouse` logs `warehouse dropped unreadable event` for a message whose data is not an object with a string `orderId`, and still acknowledges it as success.
 
 ## Review Focus
 
@@ -213,7 +214,7 @@ Apps: `order-api` 5101/3510; `warehouse` Dapr HTTP 3511, **no `appPort`** in `da
 `warehouse` streams `pubsub`/`orders`, logs the line, always reports success:
 - .NET: `Dapr.Messaging`; `builder.Services.AddDaprPubSubClient()`; a `BackgroundService` calls `DaprPublishSubscribeClient.SubscribeAsync("pubsub", "orders", new DaprSubscriptionOptions(new MessageHandlingPolicy(TimeSpan.FromSeconds(10), TopicResponseAction.Retry)), handler)` and the handler returns `TopicResponseAction.Success`. Reference: `dotnet-sdk/examples/Messaging/02-Streaming` at `v1.19.1`. Generic host (`Host.CreateApplicationBuilder`), no web server.
 - Python: `DaprClient().subscribe_with_handler(pubsub_name="pubsub", topic="orders", handler_fn=…)` returning `TopicEventResponse("success")`; a plain `python app.py` process kept alive until SIGTERM. `dapr.yaml` command `["uv", "run", "python", "app.py"]`.
-- Java: `DaprPreviewClient.subscribeToTopic("pubsub", "orders", TypeRef.get(Order.class))` → `Flux<Order>`, subscribe and log; Spring Boot with `spring.main.web-application-type=none`, kept alive by the subscription.
+- Java: `DaprPreviewClient.subscribeToTopic("pubsub", "orders", TypeRef.BYTE_ARRAY)` → `Flux<byte[]>`; the app parses the bytes itself with its Jackson 3 `JsonMapper` (a typed `TypeRef.get(Order.class)` would have the SDK answer DROP for an undeserializable message and end the Flux, closing the stream; risk note §1). Spring Boot with `spring.main.web-application-type=none` and `spring.main.keep-alive=true` (the stream's threads are daemon threads, so nothing else keeps the JVM running); `@PreDestroy` disposes the subscription. A stream the sidecar ends because it is shutting down (gRPC `UNKNOWN: stream closed`) logs INFO `warehouse stream closed by the sidecar`; any other stream error logs ERROR `warehouse stream ended` with the exception. The other Java apps' poms use `spring-boot-starter-webmvc`; `warehouse` uses `spring-boot-starter` + `spring-boot-starter-jackson`.
 
 - [ ] **Step 1: Write `smoke-demo2.sh`**
 
@@ -222,6 +223,8 @@ Apps: `order-api` 5101/3510; `warehouse` Dapr HTTP 3511, **no `appPort`** in `da
 3. Wait until `GET :3511/v1.0/metadata` lists a subscription to `orders` with `type == "STREAMING"` (timeout 60 s; this is also how the test knows the stream is open before publishing)
 4. `POST /orders` with id `<run_id>-1` → `200`
 5. `wait_for_log Warehouse warehouse "warehouse received order <run_id>-1"`
+6. Publish an unreadable message through order-api's sidecar: `POST :3510/v1.0/publish/pubsub/orders` with `Content-Type: text/plain` and body `not an order` → `204`; wait for one more `warehouse dropped unreadable event` line
+7. `POST /orders` with id `<run_id>-2` → `200`; `wait_for_log … "warehouse received order <run_id>-2"` (the stream survived); `warehouse stream ended` never logged
 
 - [ ] **Step 2: Run it** for `dotnet`; expect FAIL.
 - [ ] **Step 3: Build .NET; run → PASS.**
@@ -248,7 +251,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
   - .NET `PublishEventAsync("pubsub", "orders-raw", order, new Dictionary<string,string>{{"rawPayload","true"}})`
   - Python `publish_event(..., publish_metadata={"rawPayload": "true"}, data_content_type="application/json")`
   - Java `publishEvent("pubsub", "orders-raw", order, Map.of("rawPayload", "true"))`
-- `shipping` reads the raw request body as a string and logs it as is on one line. No CloudEvents middleware on these routes (.NET: no `UseCloudEvents()`).
+- `shipping` reads the raw request body as a string and logs it as is on one line. No CloudEvents middleware on these routes (.NET: no `UseCloudEvents()`). After that line, `/orders` only parses the same body with the CloudEvents SDK and logs `shipping parsed CloudEvent id=<id> type=<type> source=<source>`; `/orders-raw` is not a CloudEvent and is not parsed. A body the SDK cannot read gets no parsed line and is still `SUCCESS`.
 
 - [ ] **Step 1: Write `smoke-demo3.sh`**
 
@@ -257,6 +260,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
 3. Wait for log `shipping received with envelope: `; take the line containing `<run_id>-1`; parse the JSON after the prefix with `python3`; assert keys `id`, `source`, `type`, `specversion`, `datacontenttype`, `traceparent` exist, `specversion == "1.0"`, `data.orderId == "<run_id>-1"`
 4. `POST /orders/raw` id `<run_id>-2` → `200 {"orderId":"<run_id>-2","topic":"orders-raw"}`
 5. Wait for log `shipping received raw: `; parse the JSON on the `<run_id>-2` line; assert it equals the posted order exactly (`{"orderId","item","quantity","priority"}`) and has **no** `specversion` key
+6. Wait for `shipping parsed CloudEvent id=<envelope id> type=com.dapr.event.sent source=<envelope source>`, built from the step 3 envelope; the number of parsed lines equals the number of envelope lines (none for raw deliveries)
 
 - [ ] **Step 2: Run** for `dotnet` → FAIL.
 - [ ] **Step 3: Build .NET → PASS.** If the raw body arrives wrapped, base64-encoded or rejected, record it under risk 3, stop and report.
@@ -282,7 +286,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
   - Python `DaprClient.publish_events(pubsub_name="pubsub", topic_name="orders", data=[json.dumps(o) for o in orders], data_content_type="application/json")` → `len(failed_entries)`
   - Java `DaprClient.publishEvents("pubsub", "orders", "application/json", orders)` → `getFailedEntries().size()`
 - `subscription-bulk.yaml`: topic `orders`, `routes.default: /orders/bulk`, `bulkSubscribe: { enabled: true, maxMessagesCount: 10, maxAwaitDurationMs: 1000 }`, `scopes: [shipping]`.
-- `shipping` `POST /orders/bulk` reads `entries[]`; for each entry, takes the order from `entries[i].event` (a CloudEvent object whose `data` is the order; handle the case where `event` is a JSON string by parsing it); logs one batch line; responds `200 {"statuses": [{"entryId": "<entryId>", "status": "SUCCESS"}, ...]}` in entry order.
+- `shipping` `POST /orders/bulk` reads `entries[]`; for each entry, reads `entries[i].event` with the CloudEvents SDK's JSON format (a CloudEvent object whose `data` is the order; when `event` is a JSON string, that string is parsed instead); an entry the SDK cannot read, or without a string `data.orderId`, is `DROP`; logs one batch line; responds `200 {"statuses": [{"entryId": "<entryId>", "status": "SUCCESS"}, ...]}` in entry order.
 
 - [ ] **Step 1: Write `smoke-demo4.sh`**
 
@@ -315,7 +319,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
 - `subscription-orders.yaml`: topic `orders`; `routes.rules: [{match: 'event.data.priority == "express"', path: /orders/express}]`; `routes.default: /orders/standard`; `deadLetterTopic: orders-dead`; `scopes: [shipping]`.
 - `subscription-dead-letter.yaml`: topic `orders-dead`, `routes.default: /orders/dead`, `scopes: [shipping]`.
 - `resiliency.yaml`: `apiVersion: dapr.io/v1alpha1`, `kind: Resiliency`, name `pubsub-retries`; policy `retries.orderRetries: {policy: constant, duration: 1s, maxRetries: 3}`; `targets.components.pubsub.inbound.retry: orderRetries`; `scopes: [shipping]`.
-- `shipping` handlers: express and standard log their line and return `200 SUCCESS`, except when `data.item == "poison"`: log `shipping rejected order <id>` and return `500 {"status":"RETRY"}`. `/orders/dead` logs `shipping dead-lettered order <id>` and returns `200 SUCCESS`.
+- `shipping` handlers read the body with the CloudEvents SDK (an unreadable event is `200 DROP`, Shared contracts). Express and standard log their line and return `200 SUCCESS`, except when `data.item == "poison"`: log `shipping rejected order <id>` and return `500 {"status":"RETRY"}`. `/orders/dead` logs `shipping dead-lettered order <id>` and returns `200 SUCCESS`.
 
 - [ ] **Step 1: Write `smoke-demo5.sh`**
 
