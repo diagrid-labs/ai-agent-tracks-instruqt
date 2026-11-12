@@ -4,6 +4,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,16 +20,16 @@ public class OrderController {
 
     // /orders is a normal subscription: the body is a CloudEvent envelope with the order in "data".
     @PostMapping("/orders")
-    public Map<String, String> receiveOrder(@RequestBody String body) {
+    public ResponseEntity<Map<String, String>> receiveOrder(@RequestBody(required = false) String body) {
         log.info("shipping received with envelope: {}", body);
         // SUCCESS tells Dapr the message is handled, so it is not redelivered.
-        return Map.of("status", "SUCCESS");
+        return ResponseEntity.ok(Map.of("status", "SUCCESS"));
     }
 
     // /orders-raw receives what the publisher put on the topic: the order itself, no envelope.
     @PostMapping("/orders-raw")
-    public Map<String, String> receiveRawOrder(@RequestBody String body) {
+    public ResponseEntity<Map<String, String>> receiveRawOrder(@RequestBody(required = false) String body) {
         log.info("shipping received raw: {}", body);
-        return Map.of("status", "SUCCESS");
+        return ResponseEntity.ok(Map.of("status", "SUCCESS"));
     }
 }

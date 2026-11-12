@@ -39,7 +39,7 @@
 - Body missing any `Order` field, a field of the wrong JSON type, not JSON, not an object, or a valid JSON value followed by more non-whitespace content (`{...} x`): `400 {"error": "INVALID_ORDER"}`, nothing published.
 - `count`: surrounding whitespace is stripped, then it must be ASCII digits only (`^[0-9]+$`) and 1..100. Missing, empty, `+5`, `1_0`, `1.5`, `abc`, `0` or `101`: `400 {"error": "INVALID_COUNT"}`. ` 5` is a valid 5.
 - Published orders are serialized as compact JSON (no spaces) in every language.
-- Dapr rejects the publish: `500 {"orderId": "<id>", "error": "<gRPC status name>"}`, using the same gRPC-status-to-name approach as `secrets/*/Demo1-ReadSecret` (`.NET` regex, Python `code.name`, Java message `contains`).
+- Dapr rejects the publish: `500 {"orderId": "<id>", "error": "<gRPC status name>"}`. Each language reads the gRPC status from the exception: .NET converts the `RpcException`'s `StatusCode` with a regex (`NotFound` → `NOT_FOUND`), Python uses `code().name`, and Java walks the `DaprException`'s cause chain to the `StatusRuntimeException` and uses `getStatus().getCode().name()`, with `INTERNAL` if there is none.
 - Publisher logs `order-api published <orderId> to <topic>` per order (bulk: `order-api bulk published <N> orders to orders, <F> failed`).
 
 **Subscriber log lines** (the smoke tests grep these; exact text, `<id>` is `data.orderId`):

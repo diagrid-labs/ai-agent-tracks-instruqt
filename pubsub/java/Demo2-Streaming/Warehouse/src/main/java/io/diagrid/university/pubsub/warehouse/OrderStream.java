@@ -1,53 +1,77 @@
 package io.diagrid.university.pubsub.warehouse;
 
-import io.dapr.client.DaprClientBuilder;
 import io.dapr.client.DaprPreviewClient;
 import io.dapr.utils.TypeRef;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
-
-import jakarta.annotation.PreDestroy;
-
-import java.util.concurrent.CountDownLatch;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public class OrderStream implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(OrderStream.class);
 
-    // Streaming subscriptions live on the preview client.
-    private final DaprPreviewClient client = new DaprClientBuilder().buildPreviewClient();
-    private final CountDownLatch shutdown = new CountDownLatch(1);
-    private Disposable subscription;
+    private final DaprPreviewClient client;
+    private final JsonMapper mapper;
+    // Set on the startup thread, disposed on the shutdown thread: volatile makes the write visible.
+    private volatile Disposable subscription;
+
+    OrderStream(DaprPreviewClient client, JsonMapper mapper) {
+        this.client = client;
+        this.mapper = mapper;
+    }
 
     @Override
     public void run(ApplicationArguments args) {
-        // The app opens the stream itself: pub/sub component `pubsub`, topic `orders`. Each
-        // event is deserialized into an Order and the stream acknowledges it for us, so this
-        // demo always reports success.
-        subscription = client.subscribeToTopic("pubsub", "orders", TypeRef.get(Order.class))
-                .subscribe(order -> log.info("warehouse received order {}", order.orderId()),
-                        error -> log.error("warehouse stream ended", error));
+        // The app opens the stream itself: pub/sub component `pubsub`, topic `orders`. No
+        // Subscription file and no /dapr/subscribe endpoint are involved.
+        // The SDK answers Dapr SUCCESS for every message it hands to this Flux, so this demo
+        // always acknowledges. The data is taken as raw bytes rather than TypeRef<Order>: a
+        // message the SDK cannot deserialize into the requested type is answered DROP and ends
+        // the whole Flux with an error, which would close the stream.
+        subscription = client.subscribeToTopic("pubsub", "orders", TypeRef.BYTE_ARRAY)
+                .subscribe(this::receiveOrder,
+                        error -> log.error("warehouse stream ended", error),
+                        () -> log.info("warehouse stream closed by the sidecar"));
+        // run() returns straight away. spring.main.keep-alive keeps the JVM running (the
+        // stream's threads are daemon threads and there is no web server) until SIGTERM.
+    }
 
-        // The Flux alone does not keep the JVM alive: its threads are daemon threads and
-        // there is no web server. The main thread waits here until SIGTERM closes the context.
+    // Never throws: if this callback threw, Reactor would cancel the Flux, which closes the
+    // stream to the sidecar, and the SDK does not reopen it.
+    private void receiveOrder(byte[] data) {
+        String orderId = readOrderId(data);
+        if (orderId == null) {
+            log.warn("warehouse dropped unreadable event");
+        } else {
+            log.info("warehouse received order {}", orderId);
+        }
+    }
+
+    // The message holds the CloudEvent data as raw bytes of JSON. Returns its orderId, or
+    // null if the data is not a JSON object with a string orderId.
+    private String readOrderId(byte[] data) {
         try {
-            shutdown.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            JsonNode orderId = mapper.readTree(data).path("orderId");
+            return orderId.isString() ? orderId.asString() : null;
+        } catch (JacksonException e) {
+            return null;
         }
     }
 
     @PreDestroy
-    void close() throws Exception {
-        shutdown.countDown();
+    void close() {
+        // Disposing the subscription closes the stream. The client itself is a bean, which
+        // Spring closes after this.
         if (subscription != null) {
             subscription.dispose();
         }
-        client.close();
     }
 }
