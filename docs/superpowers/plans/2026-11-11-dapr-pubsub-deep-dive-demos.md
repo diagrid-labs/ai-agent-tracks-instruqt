@@ -19,11 +19,11 @@
 - Do not change anything under `secrets/`.
 - Do not copy code from `diagrid-labs/dapr-pub-sub-deep-dive`.
 - Component name `pubsub`. Topics `orders`, `orders-raw`, `orders-dead`.
-- App folder names are identical in every language: `OrderApi`, `Shipping`, `Invoicing`, `Warehouse`.
+- Folder names are idiomatic per language *(changed 2026-11-12; the plan first had identical names everywhere)*: .NET keeps PascalCase demo and app folders (`Demo1-Subscriptions/OrderApi`, `Shipping`, `Invoicing`, `Warehouse`); Python and Java use kebab-case (`demo1-subscriptions/order-api`, `shipping`, `invoicing`, `warehouse`). App IDs are the same everywhere.
 - Ports, identical in every language: `order-api` app **5101**, Dapr HTTP **3510**; the second app **5102**, Dapr HTTP **3511**; the third app **5103**, Dapr HTTP **3512**. `warehouse` has no app port, Dapr HTTP **3511**.
 - Every `dapr.yaml` (Demos 1–5) uses `common.resourcesPaths: [../resources, ./resources]`.
 - Payload `Order`: `{"orderId": str, "item": str, "quantity": int, "priority": "standard"|"express"}`, keys in that order.
-- Comments in code explain the Dapr concept at the line where it happens, in the voice of `secrets/*/Demo1-ReadSecret`.
+- Comments in code explain the Dapr concept at the line where it happens, in the voice of the secrets Demo 1 apps (`secrets/dotnet/Demo1-ReadSecret`, `secrets/{python,java}/demo1-read-secret`).
 - Subscriber handlers are written against the HTTP contract, except where a task says to use an SDK surface (Demo 1 `invoicing`, Demo 2 `warehouse`, publishers). The declarative `shipping` handlers (Demos 1, 3, 4, 5) read the CloudEvent body with the open **CloudEvents SDK**, not a Dapr SDK, in structured mode (the whole event is the JSON body): .NET `CloudNative.CloudEvents` + `CloudNative.CloudEvents.SystemTextJson` **2.9.0** (`JsonEventFormatter`), Python `cloudevents` **2.2.0** (`cloudevents.core.bindings.http.from_structured_event`; `JSONFormat` for bulk entries), Java `io.cloudevents:cloudevents-core` + `cloudevents-json-jackson` **5.1.0** (`EventFormatProvider` / `JsonFormat`; not `cloudevents-spring`). The Java one brings Jackson 2 next to Spring's Jackson 3; Spring Boot 4.0.8 manages it at 2.21.5 and Spring MVC keeps its Jackson 3 converter (risk note §7).
 
 ## Shared contracts (all languages)
@@ -83,17 +83,23 @@ tests/pubsub/
 pubsub/
   README.md                 (Task 8)
   <lang>/resources/pubsub.yaml       Redis, name pubsub (Task 1)
-  <lang>/Demo1-Subscriptions/        dapr.yaml, resources/, OrderApi/, Shipping/, Invoicing/
-  <lang>/Demo2-Streaming/            dapr.yaml, OrderApi/, Warehouse/   (no resources/ folder)
-  <lang>/Demo3-CloudEvents/          dapr.yaml, resources/, OrderApi/, Shipping/
-  <lang>/Demo4-Bulk/                 dapr.yaml, resources/, OrderApi/, Shipping/
-  <lang>/Demo5-RoutingDeadLetter/    dapr.yaml, resources/, OrderApi/, Shipping/
-  <lang>/Demo6-SwapProvider/         dapr.yaml, resources/pubsub.yaml (RabbitMQ)
+  dotnet/Demo1-Subscriptions/        dapr.yaml, resources/, OrderApi/, Shipping/, Invoicing/
+  dotnet/Demo2-Streaming/            dapr.yaml, OrderApi/, Warehouse/   (no resources/ folder)
+  dotnet/Demo3-CloudEvents/          dapr.yaml, resources/, OrderApi/, Shipping/
+  dotnet/Demo4-Bulk/                 dapr.yaml, resources/, OrderApi/, Shipping/
+  dotnet/Demo5-RoutingDeadLetter/    dapr.yaml, resources/, OrderApi/, Shipping/
+  dotnet/Demo6-SwapProvider/         dapr.yaml, resources/pubsub.yaml (RabbitMQ)
+  {python,java}/demo1-subscriptions/        dapr.yaml, resources/, order-api/, shipping/, invoicing/
+  {python,java}/demo2-streaming/            dapr.yaml, order-api/, warehouse/   (no resources/ folder)
+  {python,java}/demo3-cloud-events/         dapr.yaml, resources/, order-api/, shipping/
+  {python,java}/demo4-bulk/                 dapr.yaml, resources/, order-api/, shipping/
+  {python,java}/demo5-routing-dead-letter/  dapr.yaml, resources/, order-api/, shipping/
+  {python,java}/demo6-swap-provider/        dapr.yaml, resources/pubsub.yaml (RabbitMQ)
 docs/superpowers/notes/2026-11-11-pubsub-risk-outcomes.md   spec §7 outcomes, appended per task
 .gitignore                  add pubsub/**/target/ and pubsub/**/.dapr/
 ```
 
-Project files per app: .NET `<App>/<App>.csproj` + `Program.cs`; Python `<App>/pyproject.toml` + `app.py`; Java `<App>/pom.xml` + `src/main/java/io/diagrid/university/pubsub/<app>/…` + `src/main/resources/application.properties` (`server.port`, `spring.application.name`).
+Project files per app: .NET `<App>/<App>.csproj` + `Program.cs`; Python `<app-id>/pyproject.toml` + `app.py`; Java `<app-id>/pom.xml` + `src/main/java/io/diagrid/university/pubsub/<app>/…` + `src/main/resources/application.properties` (`server.port`, `spring.application.name`).
 
 `dapr.yaml` commands follow secrets: .NET `["dotnet", "run", "--urls", "http://localhost:<port>"]`; Python `["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "<port>"]`; Java `["mvn", "-q", "spring-boot:run"]`.
 

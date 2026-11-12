@@ -1,0 +1,21 @@
+version: 1
+common:
+  # Two differences with demo5-routing-dead-letter/dapr.yaml: the appDirPath values, which point
+  # back at that demo's apps, and the resources folders. ./resources holds the `pubsub`
+  # component that talks to RabbitMQ; the shared Redis one in ../resources is not loaded.
+  # Demo 5's resources folder is still needed for its subscriptions and resiliency policy.
+  resourcesPaths:
+    - ./resources
+    - ../demo5-routing-dead-letter/resources
+apps:
+  - appID: order-api
+    # The very same apps as demo5-routing-dead-letter. They are not copied, they are not changed.
+    appDirPath: ../demo5-routing-dead-letter/order-api
+    appPort: 5101
+    daprHTTPPort: 3510
+    command: ["mvn", "-q", "spring-boot:run"]
+  - appID: shipping
+    appDirPath: ../demo5-routing-dead-letter/shipping
+    appPort: 5102
+    daprHTTPPort: 3511
+    command: ["mvn", "-q", "spring-boot:run"]

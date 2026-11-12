@@ -54,15 +54,15 @@ The secret names and values come from `secrets.example.json`, which is the singl
 
 ## Demos
 
-| Folder | Used in | What it shows |
-|---|---|---|
-| `Demo1-ReadSecret` | Challenges 1 and 2 | One app reads a secret from the `secretstore` component |
-| `Demo2-Scoping` | Challenge 3 | Two apps, one allowed to read a secret and one refused |
-| `Demo3-SwapProvider` | Challenge 4 | The unchanged `Demo1-ReadSecret` app, run with a `secretstore` component that points at HashiCorp Vault instead of a file |
+| .NET folder | Python and Java folder | Used in | What it shows |
+|---|---|---|---|
+| `Demo1-ReadSecret` | `demo1-read-secret` | Challenges 1 and 2 | One app reads a secret from the `secretstore` component |
+| `Demo2-Scoping` (apps in `AppA`, `AppB`) | `demo2-scoping` (apps in `app-a`, `app-b`) | Challenge 3 | Two apps, one allowed to read a secret and one refused |
+| `Demo3-SwapProvider` | `demo3-swap-provider` | Challenge 4 | The unchanged Demo 1 app, run with a `secretstore` component that points at HashiCorp Vault instead of a file |
 
-Each language has its own folder (`dotnet/`, `python/`, `java/`) containing all three demos and a `resources/` folder with the component YAML.
+Each language has its own folder (`dotnet/`, `python/`, `java/`) containing all three demos and a `resources/` folder with the component YAML. Folder names follow each language's conventions: PascalCase for .NET, kebab-case for Python and Java.
 
-`Demo3-SwapProvider` has no application code. Its `dapr.yaml` starts `../Demo1-ReadSecret` with its own `resources` folder, where `secretstore-vault.yaml` is the `secretstore` component. It is not in the shared `resources` folder because a sidecar does not start when two components there have the same name.
+The Demo 3 folder has no application code. Its `dapr.yaml` starts the Demo 1 app (`../Demo1-ReadSecret` in .NET, `../demo1-read-secret` in Python and Java) with its own `resources` folder, where `secretstore-vault.yaml` is the `secretstore` component. It is not in the shared `resources` folder because a sidecar does not start when two components there have the same name.
 
 ## Run a demo
 
@@ -73,10 +73,10 @@ Run the demos from inside the demo folder. The apps are added to this repo as th
 cd secrets/dotnet/Demo1-ReadSecret && dapr run -f .
 
 # Python
-cd secrets/python/Demo1-ReadSecret && dapr run -f .
+cd secrets/python/demo1-read-secret && dapr run -f .
 
 # Java
-cd secrets/java/Demo1-ReadSecret && dapr run -f .
+cd secrets/java/demo1-read-secret && dapr run -f .
 ```
 
-Replace `Demo1-ReadSecret` with `Demo2-Scoping` for the scoping demo, or with `Demo3-SwapProvider` for the Vault demo (start Vault first, see above).
+For the scoping demo use `Demo2-Scoping` (.NET) or `demo2-scoping` (Python, Java). For the Vault demo use `Demo3-SwapProvider` (.NET) or `demo3-swap-provider` (Python, Java), and start Vault first (see above).

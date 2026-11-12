@@ -43,21 +43,23 @@ The management UI is at <http://localhost:15672> (user `guest`, password `guest`
 
 ## The demos
 
-The pub/sub component is named `pubsub` and the topics are `orders`, `orders-raw` and `orders-dead`. The Redis component lives once per language in `<lang>/resources/pubsub.yaml`. Each demo adds its own `Subscription` and resiliency files in `DemoN-*/resources/`, and its `dapr.yaml` loads both folders with `resourcesPaths`.
+The pub/sub component is named `pubsub` and the topics are `orders`, `orders-raw` and `orders-dead`. The Redis component lives once per language in `<lang>/resources/pubsub.yaml`. Each demo adds its own `Subscription` and resiliency files in its own `resources/` folder, and its `dapr.yaml` loads both folders with `resourcesPaths`.
 
-| Folder | Challenge | What it shows |
-|---|---|---|
-| `Demo1-Subscriptions` | 1 | Two subscribers on the same topic: `shipping` is wired by a `Subscription` YAML (declarative), `invoicing` from code (programmatic). Both receive every order, and the sidecar metadata endpoint lists one as `DECLARATIVE` and one as `PROGRAMMATIC`. |
-| `Demo2-Streaming` | 2 | `warehouse` has no app port and no endpoints. It opens a stream to its sidecar and pulls orders. The metadata endpoint lists it as `STREAMING`. |
-| `Demo3-CloudEvents` | 3 | The same kind of order published twice: normally (the subscriber logs the whole CloudEvent envelope) and with `rawPayload` (the subscriber logs only the bare order). |
-| `Demo4-Bulk` | 4 | One bulk publish of N orders, and a `bulkSubscribe` subscription that receives them in batches and answers per entry. |
-| `Demo5-RoutingDeadLetter` | 5 | `express` and `standard` orders reach different handlers through `routes.rules`. A `poison` order is retried by a resiliency policy and then dead-lettered to `orders-dead`. |
-| `Demo6-SwapProvider` | 6 | The unchanged Demo 5 apps and `Subscription` files run against a `pubsub.rabbitmq` component with the same name. The RabbitMQ management UI shows what Dapr created. |
+| Challenge | .NET folder | Python and Java folder | What it shows |
+|---|---|---|---|
+| 1 | `Demo1-Subscriptions` | `demo1-subscriptions` | Two subscribers on the same topic: `shipping` is wired by a `Subscription` YAML (declarative), `invoicing` from code (programmatic). Both receive every order, and the sidecar metadata endpoint lists one as `DECLARATIVE` and one as `PROGRAMMATIC`. |
+| 2 | `Demo2-Streaming` | `demo2-streaming` | `warehouse` has no app port and no endpoints. It opens a stream to its sidecar and pulls orders. The metadata endpoint lists it as `STREAMING`. |
+| 3 | `Demo3-CloudEvents` | `demo3-cloud-events` | The same kind of order published twice: normally (the subscriber logs the whole CloudEvent envelope) and with `rawPayload` (the subscriber logs only the bare order). |
+| 4 | `Demo4-Bulk` | `demo4-bulk` | One bulk publish of N orders, and a `bulkSubscribe` subscription that receives them in batches and answers per entry. |
+| 5 | `Demo5-RoutingDeadLetter` | `demo5-routing-dead-letter` | `express` and `standard` orders reach different handlers through `routes.rules`. A `poison` order is retried by a resiliency policy and then dead-lettered to `orders-dead`. |
+| 6 | `Demo6-SwapProvider` | `demo6-swap-provider` | The unchanged Demo 5 apps and `Subscription` files run against a `pubsub.rabbitmq` component with the same name. The RabbitMQ management UI shows what Dapr created. |
 
-Every demo runs the same way. Replace `dotnet` with `python` or `java`, and `Demo1-Subscriptions` with the demo you want:
+Folder names follow each language's conventions: .NET uses PascalCase (`Demo1-Subscriptions/OrderApi`), Python and Java use kebab-case (`demo1-subscriptions/order-api`). The app folders inside a demo are `OrderApi`, `Shipping`, `Invoicing` and `Warehouse` in .NET, and `order-api`, `shipping`, `invoicing` and `warehouse` (the app IDs) in Python and Java.
+
+Every demo runs the same way. Pick the folder for your language and the demo you want, for example Demo 1:
 
 ```bash
-cd pubsub/dotnet/Demo1-Subscriptions
+cd pubsub/dotnet/Demo1-Subscriptions   # Python: pubsub/python/demo1-subscriptions, Java: pubsub/java/demo1-subscriptions
 dapr run -f .
 ```
 
@@ -212,7 +214,7 @@ The poison order is delivered 4 times: the first try plus the 3 retries of `reso
 Start RabbitMQ first (see above). The folder has no app code: its `dapr.yaml` runs the Demo 5 apps, and its `resources/pubsub.yaml` is a `pubsub.rabbitmq` component with the same name, `pubsub`, as the Redis one. The Demo 5 `Subscription` and resiliency files are loaded unchanged.
 
 ```bash
-cd pubsub/dotnet/Demo6-SwapProvider
+cd pubsub/dotnet/Demo6-SwapProvider   # Python: pubsub/python/demo6-swap-provider, Java: pubsub/java/demo6-swap-provider
 dapr run -f .
 ```
 
