@@ -1,0 +1,15 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  # The component name `pubsub` is what the apps publish to and subscribe through. The
+  # apps never mention Redis, only this name. This is the only file Demo 6 replaces:
+  # the same name pointing at a different broker.
+  type: pubsub.redis
+  version: v1
+  metadata:
+  - name: redisHost
+    value: localhost:6379
+  - name: redisPassword
+    value: ""

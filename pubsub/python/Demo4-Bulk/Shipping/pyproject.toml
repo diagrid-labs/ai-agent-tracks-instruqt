@@ -1,0 +1,10 @@
+[project]
+name = "shipping"
+version = "0.1.0"
+description = "Receives orders in batches through a bulk Dapr subscription"
+requires-python = ">=3.12"
+dependencies = [
+    "cloudevents==2.2.0",
+    "fastapi",
+    "uvicorn",
+]

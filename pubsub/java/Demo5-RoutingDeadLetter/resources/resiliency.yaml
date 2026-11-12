@@ -1,0 +1,19 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: pubsub-retries
+spec:
+  policies:
+    retries:
+      # First delivery plus 3 retries, one second apart. After that the message is dead-lettered.
+      orderRetries:
+        policy: constant
+        duration: 1s
+        maxRetries: 3
+  targets:
+    components:
+      pubsub:
+        inbound:
+          retry: orderRetries
+scopes:
+  - shipping

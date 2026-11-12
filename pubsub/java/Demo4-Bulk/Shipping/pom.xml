@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.0.8</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>io.diagrid.university</groupId>
+  <artifactId>shipping</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>Shipping</name>
+  <description>Receives orders in batches through a bulk Dapr subscription</description>
+
+  <properties>
+    <java.version>17</java.version>
+    <cloudevents.version>5.1.0</cloudevents.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
+    </dependency>
+    <!-- The open CloudEvents SDK, to read the CloudEvent Dapr delivers. cloudevents-json-jackson
+         uses Jackson 2 (com.fasterxml); Spring MVC itself uses Jackson 3 (tools.jackson), so both
+         are on the classpath. Spring Boot manages the Jackson 2 version too. -->
+    <dependency>
+      <groupId>io.cloudevents</groupId>
+      <artifactId>cloudevents-core</artifactId>
+      <version>${cloudevents.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.cloudevents</groupId>
+      <artifactId>cloudevents-json-jackson</artifactId>
+      <version>${cloudevents.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
