@@ -77,8 +77,14 @@ assert_eq "400" "${resp%% *}" "non-JSON bulk body returns 400"
 assert_eq '{"error": "INVALID_BULK_REQUEST"}' "$(echo "${resp#* }" | json_norm)" \
   "non-JSON bulk body is INVALID_BULK_REQUEST"
 
-# 5. count must be 1..100.
-for q in "count=0&prefix=x" "count=101&prefix=x" "prefix=x"; do
+# 5. count must be 1..100, ASCII digits only; surrounding whitespace is stripped.
+# The prefix "${RUN}ws" has no dash after $RUN, so the batch checks above never match it.
+resp="$(post_json "http://localhost:5101/orders/bulk?count=%205&prefix=${RUN}ws" "")"
+assert_eq "200" "${resp%% *}" "POST /orders/bulk?count=%205 returns 200"
+assert_eq '{"sent": 5, "failed": 0}' "$(echo "${resp#* }" | json_norm)" \
+  "POST /orders/bulk?count=%205 reports 5 sent, 0 failed"
+for q in "count=0&prefix=x" "count=101&prefix=x" "prefix=x" "count=%2B5&prefix=x" "count=1_0&prefix=x" \
+  "count=1.5&prefix=x" "count=abc&prefix=x"; do
   resp="$(post_json "http://localhost:5101/orders/bulk?$q" "")"
   assert_eq "400" "${resp%% *}" "POST /orders/bulk?$q returns 400"
   assert_eq '{"error": "INVALID_COUNT"}' "$(echo "${resp#* }" | json_norm)" \

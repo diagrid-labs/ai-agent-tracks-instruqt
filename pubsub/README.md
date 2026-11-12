@@ -63,7 +63,9 @@ dapr run -f .
 
 Stop it with Ctrl+C. Run the `curl` commands in a second terminal.
 
-All publisher endpoints answer `400 {"error": "INVALID_ORDER"}` for a body that is not a JSON object with `orderId`, `item`, `quantity` and `priority`, and publish nothing. If Dapr rejects a publish, they answer `500` with the gRPC status name in `error`.
+All publisher endpoints answer `400 {"error": "INVALID_ORDER"}` for a body that is not a single JSON object with `orderId`, `item`, `quantity` and `priority` of the right types (anything after the object, such as `{...} x`, counts as invalid too), and publish nothing. If Dapr rejects a publish, they answer `500` with the gRPC status name in `error`. Published orders are compact JSON in every language.
+
+The log lines about messages that are dropped or rejected (`shipping dropped unreadable event`, `shipping dropped unreadable entry <entryId>`, `shipping rejected order <orderId>`, `warehouse dropped unreadable event`) are warnings; every other line is info.
 
 ### Demo 1: declarative vs programmatic
 
@@ -88,6 +90,12 @@ curl -s http://localhost:3512/v1.0/metadata | python3 -m json.tool   # invoicing
 
 `shipping` has no Dapr code at all. Its subscription is `resources/subscription-shipping.yaml`.
 
+Both subscribers answer `200 {"status": "SUCCESS"}`. `shipping` answers `200 {"status": "DROP"}` for an event it cannot read (not JSON, not an object, or no string `data.orderId`) and logs `shipping dropped unreadable event`. Dapr redelivers on any non-2xx answer except 404, and an unreadable event will not parse any better the next time, so it is dropped instead. How `invoicing` treats an unreadable event is left to its SDK.
+
+```bash
+curl -s -X POST http://localhost:5102/orders -H 'Content-Type: application/json' -d 'not json'
+```
+
 Note that `scopes` sits beside `spec` in every `Subscription` file, not inside it. Inside `spec` it is ignored, and then every sidecar loads the subscription, including the publisher's.
 
 ### Demo 2: streaming
@@ -107,7 +115,7 @@ warehouse received order o-2001
 curl -s http://localhost:3511/v1.0/metadata | python3 -m json.tool   # warehouse: "type": "STREAMING"
 ```
 
-There is no `Subscription` file and no `appPort`: the app calls the sidecar, not the other way round. Streaming subscriptions are an alpha API in Dapr 1.19. The handler always acknowledges the message, so this demo does not show retry or drop.
+There is no `Subscription` file and no `appPort`: the app calls the sidecar, not the other way round. Streaming subscriptions are an alpha API in Dapr 1.19. The handler always acknowledges the message, so this demo does not show retry or drop. A message it cannot read (not a JSON object with a string `orderId`) is logged as `warehouse dropped unreadable event` and still acknowledged.
 
 ### Demo 3: CloudEvents
 
@@ -147,7 +155,7 @@ The `rawPayload` metadata is set by the **publisher** only. The `orders-raw` sub
 curl -s -X POST 'http://localhost:5101/orders/bulk?count=25&prefix=bulk'
 ```
 
-Response: `{"sent":25,"failed":0}`. `count` must be 1 to 100, otherwise the answer is `400 {"error": "INVALID_COUNT"}`. The subscription uses `bulkSubscribe` with `maxMessagesCount: 10` and `maxAwaitDurationMs: 1000`, so `shipping` receives the 25 orders in batches. With Redis the batches were 10, 10 and 5, in every language (the order inside a batch is not the publish order):
+Response: `{"sent":25,"failed":0}`. `count` must be a whole number from 1 to 100 written in plain digits (surrounding spaces are ignored, `+5`, `1.5` and `1_0` are not accepted), otherwise the answer is `400 {"error": "INVALID_COUNT"}`. The subscription uses `bulkSubscribe` with `maxMessagesCount: 10` and `maxAwaitDurationMs: 1000`, so `shipping` receives the 25 orders in batches. With Redis the batches were 10, 10 and 5, in every language (the order inside a batch is not the publish order):
 
 ```text
 shipping received batch of 10 orders: bulk-23,bulk-1,bulk-20,...

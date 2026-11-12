@@ -36,8 +36,9 @@
 | `POST /orders/raw` (body: `Order`) | 3 | Publish to `orders-raw` with publish metadata `rawPayload: "true"` | `200 {"orderId": "<id>", "topic": "orders-raw"}` |
 | `POST /orders/bulk?count=N&prefix=P` | 4 | Build N orders `P-1`…`P-N` (`item` `coffee-beans`, `quantity` 1, `priority` `standard`) and bulk-publish them to `orders` in one call | `200 {"sent": N, "failed": <failed entries count>}` |
 
-- Body missing any `Order` field, or not JSON: `400 {"error": "INVALID_ORDER"}`, nothing published.
-- `count` missing, < 1 or > 100: `400 {"error": "INVALID_COUNT"}`.
+- Body missing any `Order` field, a field of the wrong JSON type, not JSON, not an object, or a valid JSON value followed by more non-whitespace content (`{...} x`): `400 {"error": "INVALID_ORDER"}`, nothing published.
+- `count`: surrounding whitespace is stripped, then it must be ASCII digits only (`^[0-9]+$`) and 1..100. Missing, empty, `+5`, `1_0`, `1.5`, `abc`, `0` or `101`: `400 {"error": "INVALID_COUNT"}`. ` 5` is a valid 5.
+- Published orders are serialized as compact JSON (no spaces) in every language.
 - Dapr rejects the publish: `500 {"orderId": "<id>", "error": "<gRPC status name>"}`, using the same gRPC-status-to-name approach as `secrets/*/Demo1-ReadSecret` (`.NET` regex, Python `code.name`, Java message `contains`).
 - Publisher logs `order-api published <orderId> to <topic>` per order (bulk: `order-api bulk published <N> orders to orders, <F> failed`).
 
@@ -51,15 +52,20 @@
 | 3 | shipping | `shipping received with envelope: <raw request body>` and `shipping received raw: <raw request body>` |
 | 4 | shipping | `shipping received batch of <n> orders: <id>,<id>,...` |
 | 5/6 | shipping | `shipping express order <id>`, `shipping standard order <id>`, `shipping rejected order <id>`, `shipping dead-lettered order <id>` |
+| 1, 5/6 | shipping | `shipping dropped unreadable event` |
+| 4 | shipping | `shipping dropped unreadable entry <entryId>` |
+| 2 | warehouse | `warehouse dropped unreadable event` |
 
-Declarative HTTP handlers return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`.
+Log levels: `shipping dropped unreadable event`, `shipping dropped unreadable entry <id>`, `shipping rejected order <id>` and `warehouse dropped unreadable event` are WARNING; every other line is INFO.
+
+HTTP subscriber handlers (declarative, and Demo 1 `invoicing`) return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`. A declarative handler that cannot read an event (empty body, not JSON, root not an object, no string `data.orderId`) returns `200 {"status": "DROP"}` and logs `shipping dropped unreadable event` (Demos 1 and 5; Demo 4 drops per entry). Dapr retries any non-2xx except 404, and an unreadable event never parses on a redelivery. Demo 1 `invoicing` leaves unreadable events to its SDK. Demo 2 `warehouse` logs `warehouse dropped unreadable event` for a message whose data is not an object with a string `orderId`, and still acknowledges it as success.
 
 ## Review Focus
 
 1. **A leaked process from an earlier run still holds 5101 or 3510.** Expected: the smoke test fails at once saying which port is busy, not later with a confusing error. Pinned by `assert_ports_free` in Task 1, called first by every smoke script.
 2. **Messages left in Redis from an earlier run** (consumer groups replay pending and undelivered messages on restart). Expected: a rerun still passes and isn't confused by old orders. Pinned by every smoke script using a run-unique order id prefix (`run_id` in Task 1) and asserting only on its own ids.
 3. **A malformed order posted to the publisher.** Expected: `400 INVALID_ORDER` and nothing published. Pinned in Task 2's smoke test.
-4. **Bulk count out of range (0, 101, missing).** Expected: `400 INVALID_COUNT`. Pinned in Task 5's smoke test.
+4. **Bulk count out of range or not plain digits (0, 101, missing, `+5`, `1_0`, `1.5`, `abc`).** Expected: `400 INVALID_COUNT`; ` 5` is accepted. Pinned in Task 5's smoke test.
 5. **Demo 6 started without RabbitMQ running.** Expected: the smoke test stops before `dapr run` with "RabbitMQ is not running; start it first (see pubsub/README.md)". Pinned in Task 7's smoke test.
 
 ## File Structure
@@ -284,7 +290,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
 2. `POST /orders/bulk?count=25&prefix=<run_id>` → `200 {"sent":25,"failed":0}`
 3. Wait (timeout 30 s) until the `shipping received batch of` lines that contain `<run_id>-` together list 25 distinct ids `<run_id>-1`…`<run_id>-25`
 4. Among those lines: at least one has `n > 1`, and the number of lines is less than 25 (spec §3.4; risk 2)
-5. `POST /orders/bulk?count=0&prefix=x`, `count=101`, and no `count` → each `400 {"error":"INVALID_COUNT"}` (Review Focus 4)
+5. `POST /orders/bulk?count=0&prefix=x`, `count=101`, no `count`, `count=%2B5`, `count=1_0`, `count=1.5` and `count=abc` → each `400 {"error":"INVALID_COUNT"}`; `count=%205` → `200 {"sent":5,"failed":0}` (Review Focus 4)
 
 - [ ] **Step 2: Run** for `dotnet` → FAIL.
 - [ ] **Step 3: Build .NET → PASS.** If assertion 4 fails (one entry per batch), record it under risk 2, stop and report to the user before changing anything (spec §7).

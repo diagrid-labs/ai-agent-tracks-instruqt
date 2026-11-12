@@ -58,8 +58,31 @@ assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "strin
 resp="$(post_json http://localhost:5101/orders "not json")"
 assert_eq "400" "${resp%% *}" "non-JSON body returns 400"
 assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "non-JSON body is INVALID_ORDER"
+resp="$(post_json http://localhost:5101/orders \
+  "{\"orderId\":\"$RUN-4\",\"item\":\"coffee-beans\",\"quantity\":2,\"priority\":\"standard\"} x")"
+assert_eq "400" "${resp%% *}" "order followed by trailing content returns 400"
+assert_eq '{"error": "INVALID_ORDER"}' "$(echo "${resp#* }" | json_norm)" "trailing content body is INVALID_ORDER"
 sleep 3
 assert_eq "0" "$(count_log Shipping shipping "$RUN-2")" "shipping never saw the malformed order"
 assert_eq "0" "$(count_log Shipping shipping "$RUN-3")" "shipping never saw the string-quantity order"
+assert_eq "0" "$(count_log Shipping shipping "$RUN-4")" "shipping never saw the trailing-content order"
+
+# 5. Shipping drops an event it cannot read: 200 DROP, so Dapr does not redeliver it.
+# These post straight to the app, no sidecar involved.
+before="$(count_log Shipping shipping "shipping dropped unreadable event")"
+resp="$(post_json http://localhost:5102/orders "not json")"
+assert_eq "200" "${resp%% *}" "non-JSON event returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-JSON event is DROP"
+resp="$(post_json http://localhost:5102/orders "[]")"
+assert_eq "200" "${resp%% *}" "non-object event returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-object event is DROP"
+i=0
+while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -lt $((before + 2)) ]; do
+  sleep 1
+  i=$((i + 1))
+done
+after="$(count_log Shipping shipping "shipping dropped unreadable event")"
+[ "$after" -ge $((before + 2)) ] || die "expected 2 more 'shipping dropped unreadable event' lines, got $((after - before))"
+echo "PASS: shipping logged both dropped events"
 
 echo "Demo 1 ($LANG_ARG): all assertions passed"

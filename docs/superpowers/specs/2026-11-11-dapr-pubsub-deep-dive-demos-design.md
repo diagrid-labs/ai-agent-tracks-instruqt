@@ -126,8 +126,12 @@ subscriber apps receive them.
   - .NET: `Dapr.AspNetCore` `[Topic]` or `.WithTopic(...)` plus `MapSubscribeHandler()`.
   - Python: `dapr-ext-fastapi` `DaprApp.subscribe(...)`.
   - Java: `dapr-sdk-springboot` `@Topic`.
-- Both subscribers handle the order the same way: log a fixed line and return success.
-  The comparison is the wiring, not the handler.
+- Both subscribers handle the order the same way: log a fixed line and return
+  `200 {"status": "SUCCESS"}`. The comparison is the wiring, not the handler.
+- `shipping` answers any event it cannot read with `200 {"status": "DROP"}` and a warning
+  `shipping dropped unreadable event`, as Demo 5 does: Dapr retries any non-2xx except 404,
+  and an unreadable event never parses on a redelivery. `invoicing` leaves unreadable events
+  to its SDK.
 
 ### 3.2 Demo 2: streaming
 
@@ -140,7 +144,9 @@ subscriber apps receive them.
   - Java: **`DaprPreviewClient.subscribeToTopic`**, which returns a `Flux<T>`. Do not use
     the deprecated `subscribeToEvents`.
 - **The handler always succeeds.** It does not show retry or drop. This keeps the Java
-  ack-timing question (§7 risk 1) out of the demo.
+  ack-timing question (§7 risk 1) out of the demo. A message it cannot read is logged as a
+  warning, `warehouse dropped unreadable event`, and still acknowledged; the handler never
+  throws.
 - No `Subscription` YAML in this demo, and `warehouse` must not also be targeted by a
   declarative subscription.
 
@@ -172,7 +178,8 @@ subscriber apps receive them.
   - Java: `DaprClient.publishEvents` (stable in 1.19; not the deprecated
     `DaprPreviewClient` versions)
   It returns how many entries were sent and how many failed, from the SDK's failed-entries
-  result.
+  result. `count` is stripped of surrounding whitespace and must then be ASCII digits only
+  and 1..100; anything else is `400 {"error": "INVALID_COUNT"}`.
 - Subscriber is **declarative with `bulkSubscribe`** (decided by the user):
 
   ```yaml
