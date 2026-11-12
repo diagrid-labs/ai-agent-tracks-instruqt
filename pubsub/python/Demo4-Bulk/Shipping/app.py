@@ -33,7 +33,9 @@ async def receive_batch(request: Request) -> JSONResponse:
     ids: list[str] = []
     statuses: list[dict[str, object]] = []
     for entry in entries:
-        entry_id = entry.get("entryId", "") if isinstance(entry, dict) else ""
+        entry_id = entry.get("entryId") if isinstance(entry, dict) else None
+        # A missing or non-string entryId is answered as "".
+        entry_id = entry_id if isinstance(entry_id, str) else ""
         order_id = read_order_id(entry)
         if order_id is None:
             # DROP, not RETRY: a malformed entry will not parse any better on a redelivery.

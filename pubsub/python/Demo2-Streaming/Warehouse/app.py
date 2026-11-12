@@ -1,3 +1,4 @@
+import json
 import logging
 import signal
 import threading
@@ -14,9 +15,13 @@ logger = logging.getLogger("warehouse")
 
 
 def receive_order(message: SubscriptionMessage) -> TopicEventResponse:
-    # The handler gets the CloudEvent from the stream. For JSON data the SDK has already parsed
-    # the order into a dict; anything it could not parse is not a dict here.
-    match message.data():
+    # The handler gets the CloudEvent from the stream; raw_data() is its data as raw bytes.
+    # The app parses them as JSON itself, whatever the content type says.
+    try:
+        data = json.loads(message.raw_data())
+    except ValueError:  # not JSON, including empty data and bytes that are not UTF-8
+        data = None
+    match data:
         case {"orderId": str(order_id)}:
             logger.info("warehouse received order %s", order_id)
         case _:

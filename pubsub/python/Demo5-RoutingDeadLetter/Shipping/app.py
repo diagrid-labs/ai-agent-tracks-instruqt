@@ -65,8 +65,9 @@ async def read_order(request: Request) -> Order | None:
     """Reads data.orderId and data.item from the CloudEvent body; None if the event is unreadable."""
     try:
         # Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
-        # Dapr dependency. Dapr uses structured mode: the whole event is the JSON body.
-        message = http.HTTPMessage(dict(request.headers), await request.body())
+        # Dapr dependency. Dapr uses structured mode: the whole event, attributes included, is
+        # the JSON body, so the parser reads only the body and no headers are passed.
+        message = http.HTTPMessage({}, await request.body())
         event = http.from_structured_event(message)
     except (BaseCloudEventException, ValueError, TypeError, AttributeError):
         # Bad JSON, a body that is not an object, and a missing or invalid attribute each raise

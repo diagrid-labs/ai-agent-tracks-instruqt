@@ -20,8 +20,9 @@ async def receive_order(request: Request) -> dict[str, str]:
     logger.info("shipping received with envelope: %s", body.decode("utf-8"))
     try:
         # Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
-        # Dapr dependency. Dapr uses structured mode: the whole event is the JSON body.
-        event = http.from_structured_event(http.HTTPMessage(dict(request.headers), body))
+        # Dapr dependency. Dapr uses structured mode: the whole event, attributes included, is
+        # the JSON body, so the parser reads only the body and no headers are passed.
+        event = http.from_structured_event(http.HTTPMessage({}, body))
     except (BaseCloudEventException, ValueError, TypeError, AttributeError):
         # Not a CloudEvent: the raw line above already shows what arrived.
         pass

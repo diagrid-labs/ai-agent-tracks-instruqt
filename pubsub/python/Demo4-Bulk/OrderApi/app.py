@@ -15,6 +15,8 @@ TOPIC = "orders"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order-api")
 
+INT32_MIN, INT32_MAX = -(2**31), 2**31 - 1
+
 
 class Order(TypedDict):
     orderId: str
@@ -105,12 +107,13 @@ async def read_order(request: Request) -> Order | None:
     except ValueError:
         return None
     # All four fields, with the right JSON types (a bool is not a quantity); extra fields are ignored.
+    # The quantity must fit a 32-bit int, the same limit as the .NET and Java versions.
     match body:
         case {
             "orderId": str(order_id),
             "item": str(item),
             "quantity": int(quantity),
             "priority": str(priority),
-        } if not isinstance(quantity, bool):
+        } if not isinstance(quantity, bool) and INT32_MIN <= quantity <= INT32_MAX:
             return Order(orderId=order_id, item=item, quantity=quantity, priority=priority)
     return None
