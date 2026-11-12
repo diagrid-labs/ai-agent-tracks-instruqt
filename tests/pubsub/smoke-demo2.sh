@@ -47,4 +47,27 @@ assert_eq "{\"orderId\": \"$RUN-1\", \"topic\": \"orders\"}" "$(echo "${resp#* }
 wait_for_log Warehouse warehouse "warehouse received order $RUN-1"
 echo "PASS: warehouse received the order over the stream"
 
+# A message the warehouse cannot read: published straight through order-api's sidecar as
+# text/plain, so Dapr wraps the text "not an order" in a CloudEvent. The warehouse drops it
+# and acknowledges it, and the stream stays open for the next order.
+before="$(count_log Warehouse warehouse "warehouse dropped unreadable event")"
+status="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3510/v1.0/publish/pubsub/orders \
+  -H 'Content-Type: text/plain' -d 'not an order')"
+assert_eq "204" "$status" "publishing an unreadable message through the sidecar returns 204"
+i=0
+while [ "$i" -lt 30 ] && [ "$(count_log Warehouse warehouse "warehouse dropped unreadable event")" -le "$before" ]; do
+  sleep 1
+  i=$((i + 1))
+done
+[ "$(count_log Warehouse warehouse "warehouse dropped unreadable event")" -gt "$before" ] \
+  || die "'warehouse dropped unreadable event' not logged after 30s"
+echo "PASS: warehouse dropped the unreadable message"
+
+resp="$(post_json http://localhost:5101/orders \
+  "{\"orderId\":\"$RUN-2\",\"item\":\"coffee-beans\",\"quantity\":1,\"priority\":\"standard\"}")"
+assert_eq "200" "${resp%% *}" "POST /orders after the unreadable message returns 200"
+wait_for_log Warehouse warehouse "warehouse received order $RUN-2"
+echo "PASS: the stream survived the unreadable message"
+assert_eq "0" "$(count_log Warehouse warehouse "warehouse stream ended")" "the stream did not end"
+
 echo "Demo 2 ($LANG_ARG): all assertions passed"
