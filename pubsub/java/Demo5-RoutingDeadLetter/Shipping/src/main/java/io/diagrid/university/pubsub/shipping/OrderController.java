@@ -1,7 +1,13 @@
 package io.diagrid.university.pubsub.shipping;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import io.cloudevents.CloudEvent;
+import io.cloudevents.core.format.EventDeserializationException;
+import io.cloudevents.core.format.EventFormat;
+import io.cloudevents.core.provider.EventFormatProvider;
+import io.cloudevents.jackson.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,6 +23,11 @@ import tools.jackson.databind.json.JsonMapper;
 public class OrderController {
 
     private static final Logger log = LoggerFactory.getLogger(OrderController.class);
+
+    // The CloudEvents JSON format from the open CloudEvents SDK. Dapr delivers in structured
+    // mode: the whole CloudEvent is the JSON request body.
+    private static final EventFormat CLOUD_EVENTS =
+            EventFormatProvider.getInstance().resolveFormat(JsonFormat.CONTENT_TYPE);
 
     private final JsonMapper mapper;
 
@@ -71,15 +82,22 @@ public class OrderController {
         return ResponseEntity.ok(Map.of("status", "DROP"));
     }
 
-    // Returns the CloudEvent's "data" node, or null if the body has no data.orderId string.
+    // Returns the CloudEvent's data, or null if the body is not a CloudEvent with a string
+    // data.orderId.
     private JsonNode readData(String body) {
         if (body == null) {
             return null;
         }
         try {
-            JsonNode data = mapper.readTree(body).path("data");
+            // Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
+            // Dapr dependency. The order is in the event's data.
+            CloudEvent event = CLOUD_EVENTS.deserialize(body.getBytes(StandardCharsets.UTF_8));
+            if (event.getData() == null) {
+                return null;
+            }
+            JsonNode data = mapper.readTree(event.getData().toBytes());
             return data.path("orderId").isString() ? data : null;
-        } catch (JacksonException e) {
+        } catch (EventDeserializationException | JacksonException e) {
             return null;
         }
     }

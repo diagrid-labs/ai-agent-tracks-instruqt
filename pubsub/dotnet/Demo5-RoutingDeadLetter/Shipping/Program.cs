@@ -1,22 +1,27 @@
 using System.Text.Json;
+using CloudNative.CloudEvents;
+using CloudNative.CloudEvents.SystemTextJson;
 
-var app = WebApplication.CreateBuilder(args).Build();
+var builder = WebApplication.CreateBuilder(args);
+// The CloudEvents JSON format from the open CloudEvents SDK, shared by every request.
+builder.Services.AddSingleton<CloudEventFormatter, JsonEventFormatter>();
+var app = builder.Build();
 
 // There is no Dapr code here. The routes are wired only by resources/subscription-orders.yaml
 // and resources/subscription-dead-letter.yaml: Dapr picks /orders/express or /orders/standard
 // from the order's priority, and POSTs dead-lettered messages to /orders/dead.
-app.MapPost("/orders/express", (HttpRequest request, ILogger<Program> logger, CancellationToken cancellationToken) =>
-    Handle(request, "express", logger, cancellationToken));
+app.MapPost("/orders/express", (HttpRequest request, CloudEventFormatter formatter, ILogger<Program> logger) =>
+    Handle(request, "express", formatter, logger));
 
-app.MapPost("/orders/standard", (HttpRequest request, ILogger<Program> logger, CancellationToken cancellationToken) =>
-    Handle(request, "standard", logger, cancellationToken));
+app.MapPost("/orders/standard", (HttpRequest request, CloudEventFormatter formatter, ILogger<Program> logger) =>
+    Handle(request, "standard", formatter, logger));
 
 // Dapr forwards the original CloudEvent to orders-dead once the retries are used up,
 // so the order is in "data" here too.
-app.MapPost("/orders/dead", async Task<IResult> (HttpRequest request, ILogger<Program> logger,
-    CancellationToken cancellationToken) =>
+app.MapPost("/orders/dead", async Task<IResult> (HttpRequest request, CloudEventFormatter formatter,
+    ILogger<Program> logger) =>
 {
-    var (orderId, _) = await ReadOrder(request, cancellationToken);
+    var (orderId, _) = await ReadOrder(request, formatter);
     if (orderId is null)
     {
         return Dropped(logger);
@@ -27,10 +32,10 @@ app.MapPost("/orders/dead", async Task<IResult> (HttpRequest request, ILogger<Pr
 
 app.Run();
 
-static async Task<IResult> Handle(HttpRequest request, string route, ILogger logger,
-    CancellationToken cancellationToken)
+static async Task<IResult> Handle(HttpRequest request, string route, CloudEventFormatter formatter,
+    ILogger logger)
 {
-    var (orderId, item) = await ReadOrder(request, cancellationToken);
+    var (orderId, item) = await ReadOrder(request, formatter);
     if (orderId is null)
     {
         return Dropped(logger);
@@ -54,15 +59,15 @@ static IResult Dropped(ILogger logger)
 }
 
 // Reads data.orderId and data.item from the CloudEvent body; orderId is null if unreadable.
-static async Task<(string? OrderId, string? Item)> ReadOrder(HttpRequest request,
-    CancellationToken cancellationToken)
+static async Task<(string? OrderId, string? Item)> ReadOrder(HttpRequest request, CloudEventFormatter formatter)
 {
     try
     {
-        using var doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
-        if (doc.RootElement.ValueKind != JsonValueKind.Object
-            || !doc.RootElement.TryGetProperty("data", out var data)
-            || data.ValueKind != JsonValueKind.Object
+        // Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
+        // Dapr dependency. Dapr uses structured mode: the whole event is the JSON body.
+        var cloudEvent = await formatter.DecodeStructuredModeMessageAsync(request.Body, null, null);
+        // The order is in the event's data, which the JSON format hands over as a JsonElement.
+        if (cloudEvent.Data is not JsonElement { ValueKind: JsonValueKind.Object } data
             || !data.TryGetProperty("orderId", out var id) || id.ValueKind != JsonValueKind.String)
         {
             return (null, null);
@@ -71,8 +76,9 @@ static async Task<(string? OrderId, string? Item)> ReadOrder(HttpRequest request
             ? i.GetString() : null;
         return (id.GetString(), item);
     }
-    catch (JsonException)
+    catch (Exception e) when (e is JsonException or ArgumentException)
     {
+        // Not JSON (JsonException), or JSON that is not a valid CloudEvent (ArgumentException).
         return (null, null);
     }
 }

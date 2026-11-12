@@ -1,9 +1,15 @@
 package io.diagrid.university.pubsub.shipping;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import io.cloudevents.CloudEvent;
+import io.cloudevents.core.format.EventDeserializationException;
+import io.cloudevents.core.format.EventFormat;
+import io.cloudevents.core.provider.EventFormatProvider;
+import io.cloudevents.jackson.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +24,11 @@ import tools.jackson.databind.json.JsonMapper;
 public class OrderController {
 
     private static final Logger log = LoggerFactory.getLogger(OrderController.class);
+
+    // The CloudEvents JSON format from the open CloudEvents SDK: each entry's "event" is one
+    // CloudEvent in JSON.
+    private static final EventFormat CLOUD_EVENTS =
+            EventFormatProvider.getInstance().resolveFormat(JsonFormat.CONTENT_TYPE);
 
     // One status per entry. Record components are serialized in declaration order, so
     // "entryId" comes before "status".
@@ -76,15 +87,24 @@ public class OrderController {
 
     // Returns entry.event.data.orderId, or null if the entry is unreadable.
     private String readOrderId(JsonNode entry) {
+        // "event" is the CloudEvent; depending on the content type it is an object or a JSON string.
+        JsonNode event = entry.path("event");
+        if (!event.isObject() && !event.isString()) {
+            return null;
+        }
         try {
-            JsonNode event = entry.path("event");
-            // "event" is the CloudEvent; depending on the content type it is an object or a JSON string.
-            if (event.isString()) {
-                event = mapper.readTree(event.asString());
+            byte[] json = event.isString()
+                    ? event.asString().getBytes(StandardCharsets.UTF_8)
+                    : mapper.writeValueAsBytes(event);
+            // Dapr delivers standard CloudEvents, so the open CloudEvents SDK can read each one
+            // with no Dapr dependency. The order is in the event's data.
+            CloudEvent cloudEvent = CLOUD_EVENTS.deserialize(json);
+            if (cloudEvent.getData() == null) {
+                return null;
             }
-            JsonNode orderId = event.path("data").path("orderId");
+            JsonNode orderId = mapper.readTree(cloudEvent.getData().toBytes()).path("orderId");
             return orderId.isString() ? orderId.asString() : null;
-        } catch (JacksonException e) {
+        } catch (EventDeserializationException | JacksonException e) {
             return null;
         }
     }

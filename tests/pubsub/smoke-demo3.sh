@@ -52,6 +52,18 @@ assert e["data"]["orderId"] == run + "-1", e["data"]
 ' "$RUN" || die "envelope assertions failed: $envelope"
 echo "PASS: shipping received a CloudEvent envelope with the order in data"
 
+# 2b. Shipping reads the same envelope with the CloudEvents SDK and logs its attributes.
+parsed="$(echo "$envelope" | python3 -c '
+import json, sys
+e = json.loads(sys.stdin.read())
+print("shipping parsed CloudEvent id=%s type=%s source=%s" % (e["id"], e["type"], e["source"]))')"
+case "$parsed" in
+  *" type=com.dapr.event.sent "*) ;;
+  *) die "envelope type is not com.dapr.event.sent: $parsed" ;;
+esac
+wait_for_log Shipping shipping "$parsed"
+echo "PASS: shipping parsed the envelope with the CloudEvents SDK ($parsed)"
+
 # 3. A raw publish: no envelope at all.
 resp="$(post_json http://localhost:5101/orders/raw \
   "{\"orderId\":\"$RUN-2\",\"item\":\"coffee-beans\",\"quantity\":3,\"priority\":\"express\"}")"
@@ -68,5 +80,10 @@ echo "$raw" | python3 -c '
 import json, sys
 assert "specversion" not in json.loads(sys.stdin.read())' || die "raw body has a specversion key: $raw"
 echo "PASS: raw body has no CloudEvent envelope"
+# /orders-raw is not a CloudEvent, so shipping never tries to parse it: every parsed line
+# belongs to an envelope delivery on /orders.
+envelopes="$(count_log Shipping shipping "shipping received with envelope: ")"
+parsed_lines="$(count_log Shipping shipping "shipping parsed CloudEvent ")"
+assert_eq "$envelopes" "$parsed_lines" "one parsed CloudEvent line per envelope, none for raw deliveries"
 
 echo "Demo 3 ($LANG_ARG): all assertions passed"

@@ -76,13 +76,19 @@ assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-JSON even
 resp="$(post_json http://localhost:5102/orders "[]")"
 assert_eq "200" "${resp%% *}" "non-object event returns 200"
 assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "non-object event is DROP"
+# Shipping reads the body with the CloudEvents SDK, so an order in "data" is not enough: without
+# id, source, type and specversion it is not a CloudEvent.
+resp="$(post_json http://localhost:5102/orders "{\"data\":{\"orderId\":\"$RUN-5\"}}")"
+assert_eq "200" "${resp%% *}" "object that is not a CloudEvent returns 200"
+assert_eq '{"status": "DROP"}' "$(echo "${resp#* }" | json_norm)" "object that is not a CloudEvent is DROP"
 i=0
-while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -lt $((before + 2)) ]; do
+while [ "$i" -lt 30 ] && [ "$(count_log Shipping shipping "shipping dropped unreadable event")" -lt $((before + 3)) ]; do
   sleep 1
   i=$((i + 1))
 done
 after="$(count_log Shipping shipping "shipping dropped unreadable event")"
-[ "$after" -ge $((before + 2)) ] || die "expected 2 more 'shipping dropped unreadable event' lines, got $((after - before))"
-echo "PASS: shipping logged both dropped events"
+[ "$after" -ge $((before + 3)) ] || die "expected 3 more 'shipping dropped unreadable event' lines, got $((after - before))"
+assert_eq "0" "$(count_log Shipping shipping "shipping received order $RUN-5")" "shipping did not accept the non-CloudEvent order"
+echo "PASS: shipping logged the three dropped events"
 
 echo "Demo 1 ($LANG_ARG): all assertions passed"

@@ -1,11 +1,17 @@
+using System.Text;
 using System.Text.Json;
+using CloudNative.CloudEvents;
+using CloudNative.CloudEvents.SystemTextJson;
 
-var app = WebApplication.CreateBuilder(args).Build();
+var builder = WebApplication.CreateBuilder(args);
+// The CloudEvents JSON format from the open CloudEvents SDK, shared by every request.
+builder.Services.AddSingleton<CloudEventFormatter, JsonEventFormatter>();
+var app = builder.Build();
 
 // There is no Dapr code here and no UseCloudEvents(): the route is wired only by
 // resources/subscription-bulk.yaml, and Dapr POSTs a batch of messages as one request.
-app.MapPost("/orders/bulk", async Task<IResult> (HttpRequest request, ILogger<Program> logger,
-    CancellationToken cancellationToken) =>
+app.MapPost("/orders/bulk", async Task<IResult> (HttpRequest request, CloudEventFormatter formatter,
+    ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
     // The body is {"entries": [{"entryId", "event", ...}, ...], ...}: one entry per message.
     try
@@ -17,7 +23,7 @@ app.MapPost("/orders/bulk", async Task<IResult> (HttpRequest request, ILogger<Pr
         {
             return TypedResults.BadRequest(new { error = "INVALID_BULK_REQUEST" });
         }
-        return TypedResults.Ok(new { statuses = Handle(entries, logger) });
+        return TypedResults.Ok(new { statuses = Handle(entries, formatter, logger) });
     }
     catch (JsonException)
     {
@@ -30,7 +36,7 @@ app.Run();
 
 // Bulk subscriptions are acknowledged per entry: Dapr redelivers only the entries that
 // are not SUCCESS.
-static List<BulkEntryStatus> Handle(JsonElement entries, ILogger logger)
+static List<BulkEntryStatus> Handle(JsonElement entries, CloudEventFormatter formatter, ILogger logger)
 {
     var ids = new List<string>();
     var statuses = new List<BulkEntryStatus>();
@@ -39,7 +45,7 @@ static List<BulkEntryStatus> Handle(JsonElement entries, ILogger logger)
         var entryId = entry.ValueKind == JsonValueKind.Object
             && entry.TryGetProperty("entryId", out var e) && e.ValueKind == JsonValueKind.String
             ? e.GetString()! : "";
-        var orderId = ReadOrderId(entry);
+        var orderId = ReadOrderId(entry, formatter);
         if (orderId is null)
         {
             // DROP, not RETRY: a malformed entry will not parse any better on a redelivery.
@@ -55,24 +61,28 @@ static List<BulkEntryStatus> Handle(JsonElement entries, ILogger logger)
 }
 
 // Returns the order id from entry.event.data.orderId, or null if the entry is unreadable.
-static string? ReadOrderId(JsonElement entry)
+static string? ReadOrderId(JsonElement entry, CloudEventFormatter formatter)
 {
-    if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("event", out var evt))
+    // "event" is the CloudEvent; depending on the content type it is an object or a JSON string.
+    if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("event", out var evt)
+        || evt.ValueKind is not (JsonValueKind.Object or JsonValueKind.String))
     {
         return null;
     }
+    var json = evt.ValueKind == JsonValueKind.String ? evt.GetString()! : evt.GetRawText();
     try
     {
-        // "event" is the CloudEvent; depending on the content type it is an object or a JSON string.
-        using var parsed = evt.ValueKind == JsonValueKind.String ? JsonDocument.Parse(evt.GetString()!) : null;
-        var cloudEvent = parsed?.RootElement ?? evt;
-        return cloudEvent.ValueKind == JsonValueKind.Object
-            && cloudEvent.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
+        // Dapr delivers standard CloudEvents, so the open CloudEvents SDK can read each one with
+        // no Dapr dependency.
+        var cloudEvent = formatter.DecodeStructuredModeMessage(Encoding.UTF8.GetBytes(json), null, null);
+        // The order is in the event's data, which the JSON format hands over as a JsonElement.
+        return cloudEvent.Data is JsonElement { ValueKind: JsonValueKind.Object } data
             && data.TryGetProperty("orderId", out var id) && id.ValueKind == JsonValueKind.String
             ? id.GetString() : null;
     }
-    catch (JsonException)
+    catch (Exception e) when (e is JsonException or ArgumentException)
     {
+        // Not JSON (JsonException), or JSON that is not a valid CloudEvent (ArgumentException).
         return null;
     }
 }

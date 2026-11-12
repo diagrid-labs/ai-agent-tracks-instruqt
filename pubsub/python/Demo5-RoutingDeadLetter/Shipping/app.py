@@ -1,6 +1,8 @@
 import logging
 from typing import NamedTuple
 
+from cloudevents.core.bindings import http
+from cloudevents.core.exceptions import BaseCloudEventException
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -62,11 +64,17 @@ def dropped() -> JSONResponse:
 async def read_order(request: Request) -> Order | None:
     """Reads data.orderId and data.item from the CloudEvent body; None if the event is unreadable."""
     try:
-        event = await request.json()
-    except ValueError:
+        # Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
+        # Dapr dependency. Dapr uses structured mode: the whole event is the JSON body.
+        message = http.HTTPMessage(dict(request.headers), await request.body())
+        event = http.from_structured_event(message)
+    except (BaseCloudEventException, ValueError, TypeError, AttributeError):
+        # Bad JSON, a body that is not an object, and a missing or invalid attribute each raise
+        # a different error.
         return None
-    match event:
-        case {"data": {"orderId": str(order_id)} as data}:
+    # The order is in the event's data, which the JSON format hands over as a dict.
+    match event.get_data():
+        case {"orderId": str(order_id)} as data:
             item = data.get("item")
             return Order(order_id, item if isinstance(item, str) else None)
     return None

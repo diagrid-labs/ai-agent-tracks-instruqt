@@ -62,9 +62,10 @@ biggest="$(echo "$lines" | sed -E 's/.*received batch of ([0-9]+) orders.*/\1/' 
 echo "PASS: 25 orders arrived in $nlines batches (largest $biggest)"
 
 # 4. Shipping answers per entry: a readable entry is SUCCESS, an unreadable one is DROP.
-# This posts a hand-made bulk body straight to the app, no sidecar involved.
+# This posts a hand-made bulk body straight to the app, no sidecar involved. e1 is a complete
+# CloudEvent (the CloudEvents SDK needs id, source, type and specversion); e2 is not one.
 resp="$(post_json http://localhost:5102/orders/bulk \
-  "{\"entries\":[{\"entryId\":\"e1\",\"event\":{\"data\":{\"orderId\":\"$RUN-good\",\"item\":\"coffee-beans\",\"quantity\":1,\"priority\":\"standard\"},\"specversion\":\"1.0\"},\"contentType\":\"application/cloudevents+json\"},{\"entryId\":\"e2\",\"event\":{\"nothing\":\"here\"},\"contentType\":\"application/cloudevents+json\"}],\"topic\":\"orders\"}")"
+  "{\"entries\":[{\"entryId\":\"e1\",\"event\":{\"data\":{\"orderId\":\"$RUN-good\",\"item\":\"coffee-beans\",\"quantity\":1,\"priority\":\"standard\"},\"datacontenttype\":\"application/json\",\"id\":\"$RUN-e1\",\"source\":\"smoke-test\",\"specversion\":\"1.0\",\"type\":\"com.dapr.event.sent\"},\"contentType\":\"application/cloudevents+json\"},{\"entryId\":\"e2\",\"event\":{\"nothing\":\"here\"},\"contentType\":\"application/cloudevents+json\"}],\"topic\":\"orders\"}")"
 assert_eq "200" "${resp%% *}" "hand-made bulk body returns 200"
 assert_eq '{"statuses": [{"entryId": "e1", "status": "SUCCESS"}, {"entryId": "e2", "status": "DROP"}]}' \
   "$(echo "${resp#* }" | json_norm)" "good entry is SUCCESS, unreadable entry is DROP, in entry order"
