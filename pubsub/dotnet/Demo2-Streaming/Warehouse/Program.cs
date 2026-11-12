@@ -19,9 +19,10 @@ class OrderStreamService(DaprPublishSubscribeClient client, ILogger<OrderStreamS
     {
         // The app opens the stream itself: pub/sub component `pubsub`, topic `orders`. Dapr
         // pushes each message down the stream and waits for the app's answer.
-        // The handling policy is applied by the SDK, not by Dapr: the SDK cancels the handler's
-        // token after 10 seconds, and answers Retry (Dapr redelivers) if it cannot send the
-        // handler's own answer.
+        // The handling policy is applied by the SDK, not by Dapr. The SDK cancels the handler's
+        // token after 10 seconds, but it still waits for the handler and sends its answer: the
+        // timeout alone never answers Retry. Retry (Dapr redelivers) is sent only when sending
+        // the handler's answer is itself cancelled, for example while the subscription shuts down.
         var options = new DaprSubscriptionOptions(
             new MessageHandlingPolicy(TimeSpan.FromSeconds(10), TopicResponseAction.Retry));
 
