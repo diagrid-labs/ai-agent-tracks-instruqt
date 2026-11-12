@@ -56,10 +56,13 @@
 | 1, 5/6 | shipping | `shipping dropped unreadable event` |
 | 4 | shipping | `shipping dropped unreadable entry <entryId>` |
 | 2 | warehouse | `warehouse dropped unreadable event` |
+| 2 | warehouse (Java only) | `warehouse stream closed by the sidecar` (INFO) and `warehouse stream ended` (ERROR, with the exception) |
 
-Log levels: `shipping dropped unreadable event`, `shipping dropped unreadable entry <id>`, `shipping rejected order <id>` and `warehouse dropped unreadable event` are WARNING; every other line is INFO.
+Log levels: `shipping dropped unreadable event`, `shipping dropped unreadable entry <id>`, `shipping rejected order <id>` and `warehouse dropped unreadable event` are WARNING; `warehouse stream ended` is ERROR; every other line is INFO.
 
-HTTP subscriber handlers (declarative, and Demo 1 `invoicing`) return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`. A declarative handler that cannot read an event (empty body, not JSON, root not an object, not a CloudEvent the CloudEvents SDK accepts, for example no `id`, `source`, `type` or `specversion`, or no string `data.orderId`) returns `200 {"status": "DROP"}` and logs `shipping dropped unreadable event` (Demos 1 and 5; Demo 4 drops per entry). Dapr retries any non-2xx except 404, and an unreadable event never parses on a redelivery. Demo 1 `invoicing` leaves unreadable events to its SDK. Demo 2 `warehouse` logs `warehouse dropped unreadable event` for a message whose data is not an object with a string `orderId`, and still acknowledges it as success.
+The two `warehouse stream ...` lines exist only in Java (spec §7 risk 1). The Java SDK hands the stream to the app as a `Flux`, which reports the end of the stream or a stream error to the app, so the app has to log it: `closed by the sidecar` when the sidecar ends the stream on shutdown, `stream ended` for any other error. The .NET and Python SDKs handle the end of the stream inside the SDK and never tell the app, so there is nothing for their warehouse to log. `smoke-demo2.sh` checks that `warehouse stream ended` is not logged; that check is meaningful for Java only.
+
+HTTP subscriber handlers (declarative, and Demo 1 `invoicing`) return `200 {"status": "SUCCESS"}`; the Demo 5 rejection returns `500 {"status": "RETRY"}`. A declarative handler that cannot read an event (empty body, not JSON, root not an object, `null`, JSON followed by more content, not a CloudEvent the CloudEvents SDK accepts, for example an object with none of `id`, `source`, `type` and `specversion`, data that is not JSON, or no string `data.orderId`; the three SDKs differ on some edge cases, listed under risk 7 in `docs/superpowers/notes/2026-11-11-pubsub-risk-outcomes.md`) returns `200 {"status": "DROP"}` and logs `shipping dropped unreadable event` (Demos 1 and 5; Demo 4 drops per entry). Dapr retries any non-2xx except 404, and an unreadable event never parses on a redelivery. Demo 1 `invoicing` leaves unreadable events to its SDK. Demo 2 `warehouse` logs `warehouse dropped unreadable event` for a message whose data is not an object with a string `orderId`, and still acknowledges it as success.
 
 ## Review Focus
 
@@ -283,7 +286,7 @@ Apps: `order-api` 5101/3510, `shipping` 5102/3511.
 
 - Bulk publish, one call, no per-entry metadata:
   - .NET `DaprClient.BulkPublishEventAsync("pubsub", "orders", orders)` → `FailedEntries.Count`
-  - Python `DaprClient.publish_events(pubsub_name="pubsub", topic_name="orders", data=[json.dumps(o) for o in orders], data_content_type="application/json")` → `len(failed_entries)`
+  - Python `DaprClient.publish_events(pubsub_name="pubsub", topic_name="orders", data=[json.dumps(o, separators=(",", ":")) for o in orders], data_content_type="application/json")` → `len(failed_entries)`
   - Java `DaprClient.publishEvents("pubsub", "orders", "application/json", orders)` → `getFailedEntries().size()`
 - `subscription-bulk.yaml`: topic `orders`, `routes.default: /orders/bulk`, `bulkSubscribe: { enabled: true, maxMessagesCount: 10, maxAwaitDurationMs: 1000 }`, `scopes: [shipping]`.
 - `shipping` `POST /orders/bulk` reads `entries[]`; for each entry, reads `entries[i].event` with the CloudEvents SDK's JSON format (a CloudEvent object whose `data` is the order; when `event` is a JSON string, that string is parsed instead); an entry the SDK cannot read, or without a string `data.orderId`, is `DROP`; logs one batch line; responds `200 {"statuses": [{"entryId": "<entryId>", "status": "SUCCESS"}, ...]}` in entry order.

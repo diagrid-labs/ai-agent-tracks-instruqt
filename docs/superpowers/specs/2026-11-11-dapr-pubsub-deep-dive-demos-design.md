@@ -167,6 +167,10 @@ subscriber apps receive them.
   the learner sees the envelope in one case and only the order in the other. Do not let
   middleware unwrap the envelope before logging (for example .NET `UseCloudEvents()`): the
   point is to see it.
+- After the raw envelope line, `/orders` reads the same body with the open CloudEvents SDK
+  and logs `shipping parsed CloudEvent id=<id> type=<type> source=<source>` (decided by the
+  user on 2026-11-12). A body the SDK cannot read gets no parsed line; the raw line already
+  shows what arrived. `/orders-raw` gets no parsed line: the bare order is not a CloudEvent.
 - The learner should come away knowing what `rawPayload` loses (type, source, id, trace
   context) and when it is worth it (talking to non-Dapr producers or consumers).
 
@@ -190,9 +194,12 @@ subscriber apps receive them.
   ```
 
   Its handler receives the bulk envelope (`entries[]`), logs the batch size, and answers
-  with a per-entry `SUCCESS` status. The handler is written against the HTTP contract, not
-  an SDK helper, in all three languages. Python has no SDK helper for it, so .NET and Java
-  match Python instead of the other way round.
+  per entry: `SUCCESS` for an entry it can read, `DROP` for one it cannot (Dapr redelivers
+  only the entries that are not `SUCCESS`). It reads each entry's `event` with the open
+  CloudEvents SDK, an open standard's library rather than a Dapr helper (decided by the user
+  on 2026-11-12). Apart from that, the handler is written against the HTTP contract, not a
+  Dapr SDK helper, in all three languages. Python has no Dapr SDK helper for it, so .NET and
+  Java match Python instead of the other way round.
 - Pick `maxMessagesCount` and `maxAwaitDurationMs` so a learner publishing e.g. 25 orders
   visibly sees more than one batch, and fewer batches than orders.
 
@@ -305,6 +312,9 @@ Checked on 2026-11-11. Re-check and pin exact versions when building.
 | .NET `Dapr.Client`, `Dapr.AspNetCore`, `Dapr.Messaging` | 1.19.1 | `Dapr.Messaging` only in Demo 2 |
 | Python `dapr[fastapi]` | 1.19.0 | The FastAPI extension moved into the `dapr` package in 1.19; `dapr-ext-fastapi` is no longer a separate dependency |
 | Java `io.dapr:dapr-sdk`, `dapr-sdk-springboot` | 1.19.0 | Spring Boot 4.0.8 |
+| .NET `CloudNative.CloudEvents`, `CloudNative.CloudEvents.SystemTextJson` | 2.9.0 | `shipping` in Demos 1, 3, 4, 5 (added 2026-11-12) |
+| Python `cloudevents` | 2.2.0 | `shipping` in Demos 1, 3, 4, 5 (added 2026-11-12) |
+| Java `io.cloudevents:cloudevents-core`, `cloudevents-json-jackson` | 5.1.0 | `shipping` in Demos 1, 3, 4, 5 (added 2026-11-12); brings Jackson 2 beside Spring Boot's Jackson 3 |
 
 The secrets demos stay on 1.18. Don't upgrade them as part of this work.
 

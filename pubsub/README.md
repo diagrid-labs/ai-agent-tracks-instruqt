@@ -90,7 +90,7 @@ curl -s http://localhost:3512/v1.0/metadata | python3 -m json.tool   # invoicing
 
 `shipping` has no Dapr code at all. Its subscription is `resources/subscription-shipping.yaml`. Dapr delivers each message as a standard CloudEvent, so `shipping` reads it with the open CloudEvents SDK (.NET `CloudNative.CloudEvents`, Python `cloudevents`, Java `io.cloudevents`), not with a Dapr SDK. The Java `shipping` apps get Jackson 2 through `cloudevents-json-jackson`; Spring MVC itself keeps using Jackson 3.
 
-Both subscribers answer `200 {"status": "SUCCESS"}`. `shipping` answers `200 {"status": "DROP"}` for an event it cannot read (not JSON, not a CloudEvent the CloudEvents SDK accepts, for example JSON without `id`, `source`, `type` and `specversion`, or no string `data.orderId`) and logs `shipping dropped unreadable event`. Dapr redelivers on any non-2xx answer except 404, and an unreadable event will not parse any better the next time, so it is dropped instead. How `invoicing` treats an unreadable event is left to its SDK.
+Both subscribers answer `200 {"status": "SUCCESS"}`. `shipping` answers `200 {"status": "DROP"}` for an event it cannot read (not JSON, `null`, JSON followed by more content, not a CloudEvent the CloudEvents SDK accepts, for example an object with none of `id`, `source`, `type` and `specversion`, data that is not JSON, or no string `data.orderId`) and logs `shipping dropped unreadable event`. Dapr redelivers on any non-2xx answer except 404, and an unreadable event will not parse any better the next time, so it is dropped instead. How `invoicing` treats an unreadable event is left to its SDK.
 
 ```bash
 curl -s -X POST http://localhost:5102/orders -H 'Content-Type: application/json' -d 'not json'

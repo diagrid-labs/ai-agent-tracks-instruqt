@@ -54,7 +54,7 @@ Gotcha in `tests/pubsub/start-rabbitmq.sh`: pinging with a plain `docker exec` r
 
 ## 7. CloudEvents SDK in the `shipping` apps (Demos 1, 3, 4, 5)
 
-Decision (user, 2026-11-12): the declarative `shipping` handlers read Dapr's envelope with the open CloudEvents SDK instead of picking `data` out of the JSON by hand, to show that Dapr delivers a standard CloudEvent any CloudEvents library can read. Packages: .NET `CloudNative.CloudEvents` + `CloudNative.CloudEvents.SystemTextJson` 2.9.0, Python `cloudevents` 2.2.0, Java `io.cloudevents:cloudevents-core` + `cloudevents-json-jackson` 5.1.0. All three parse the body in structured mode (the whole event is the JSON body), whatever the request's content type, so they accept and reject the same inputs. `invoicing` (Demo 1) and `warehouse` (Demo 2) stay on their Dapr SDK surfaces.
+Decision (user, 2026-11-12): the declarative `shipping` handlers read Dapr's envelope with the open CloudEvents SDK instead of picking `data` out of the JSON by hand, to show that Dapr delivers a standard CloudEvent any CloudEvents library can read. Packages: .NET `CloudNative.CloudEvents` + `CloudNative.CloudEvents.SystemTextJson` 2.9.0, Python `cloudevents` 2.2.0, Java `io.cloudevents:cloudevents-core` + `cloudevents-json-jackson` 5.1.0. All three parse the body in structured mode (the whole event is the JSON body), whatever the request's content type. They do not accept and reject exactly the same inputs; the differences are listed below. `invoicing` (Demo 1) and `warehouse` (Demo 2) stay on their Dapr SDK surfaces.
 
 Java Jackson 2 gate (approved only if it has no downside), checked on Demo 1 `shipping`:
 - Dependency tree: Spring Boot 4.0.8 manages Jackson 2 (`jackson-2-bom.version` 2.21.5), which is exactly the 2.21.5 that `cloudevents-json-jackson` 5.1.0 asks for. One `com.fasterxml.jackson.core:jackson-annotations:2.21`, shared by Jackson 3.1.5 and Jackson 2.21.5. No overrides, no duplicates.
@@ -64,7 +64,20 @@ Java Jackson 2 gate (approved only if it has no downside), checked on Demo 1 `sh
 
 Contract changes: Demo 3 `shipping` logs `shipping parsed CloudEvent id=<id> type=<type> source=<source>` after the envelope line on `/orders` (`smoke-demo3.sh` asserts it). A body that is JSON but not a CloudEvent (for example `{"data":{"orderId":"x"}}`, no `id`, `source`, `type` or `specversion`) is now `200 DROP` in Demos 1 and 5 and a per-entry DROP in Demo 4 (`smoke-demo1.sh` asserts it; the hand-made Demo 4 entry `e1` became a complete CloudEvent).
 
-SDK differences that the demos do not hit (Dapr always sends a complete 1.0 event): Python 2.2.0 accepts an event without `id` (it generates one) where .NET and Java reject it, and .NET rejects `specversion` `0.3` where Python and Java accept it. Python raises different exceptions for bad JSON (`ValueError`), a non-object body (`AttributeError`), a wrong attribute type (`TypeError`) and a missing or invalid attribute (`CloudEventValidationError`); .NET throws `JsonException` or `ArgumentException`; Java throws `EventDeserializationException` for all of them.
+SDK differences, found by feeding the same bodies to the three SDKs (2026-11-12 review):
+
+- Python 2.2.0 accepts an event without `specversion` or without `id` (it generates an id); .NET and Java reject both.
+- Python and Java accept `specversion` `0.3`; .NET 2.9.0 rejects it.
+- Python accepts object `data` under a non-JSON `datacontenttype` (for example `application/xml`); .NET and Java reject it.
+- Python and Java accept an extension attribute whose value is an object; .NET rejects it.
+- Java rejects a `source` that is not a URI reference (for example `::not a uri`) and accepts an empty `id`; .NET and Python accept that `source` and reject the empty `id`.
+- Python rejects an attribute set to `null` (for example `"subject": null`); .NET and Java accept it.
+- Java's `deserialize` returns `null` (no event and no exception) for a body of `null`, and it reads the first JSON value and ignores anything after it (`{...} x`); .NET and Python reject both.
+- Data that is not JSON (`datacontenttype: text/plain`, or `data_base64`) comes back as a string or bytes in all three; Java's `getData().toBytes()` still returns those bytes, so code that parses them as JSON accepts what .NET and Python treat as non-JSON.
+
+The demos neutralise the last two points, so `shipping` answers the same in every language: a `null` body, trailing content after the event and data that is not JSON are all unreadable (DROP; in Demo 3 no `parsed CloudEvent` line). The Java handlers check with the app's Jackson 3 `JsonMapper` (which fails on trailing tokens) that the body is exactly one JSON object before the CloudEvents SDK reads it, and read only `JsonCloudEventData`, as .NET reads only a `JsonElement` and Python only a `dict`. The other differences never occur with real Dapr traffic: Dapr always sends a complete 1.0 event with a non-empty `id`, a URI `source`, string extensions, no `null` attributes, and data that matches its `datacontenttype`. `smoke-demo1.sh` asserts the `null` and trailing-content DROPs and `smoke-demo4.sh` a `null` entry.
+
+Exceptions: Python raises different exceptions for bad JSON (`ValueError`), a non-object body (`AttributeError`), a wrong attribute type (`TypeError`) and a missing or invalid attribute (`CloudEventValidationError`); .NET throws `JsonException` or `ArgumentException`; Java throws `EventDeserializationException` for all of them except a body of `null`, for which it returns `null` instead of throwing.
 
 ## Review findings kept on purpose
 
