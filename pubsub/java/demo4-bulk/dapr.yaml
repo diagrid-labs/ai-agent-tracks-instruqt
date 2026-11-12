@@ -6,12 +6,12 @@ common:
     - ./resources
 apps:
   - appID: order-api
-    appDirPath: ./OrderApi
+    appDirPath: ./order-api
     appPort: 5101
     daprHTTPPort: 3510
     command: ["mvn", "-q", "spring-boot:run"]
   - appID: shipping
-    appDirPath: ./Shipping
+    appDirPath: ./shipping
     appPort: 5102
     daprHTTPPort: 3511
     command: ["mvn", "-q", "spring-boot:run"]

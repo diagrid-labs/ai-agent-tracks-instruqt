@@ -3,7 +3,8 @@
 # Usage: smoke-demo4.sh dotnet|python|java
 source "$(dirname "$0")/lib.sh" "$@"
 
-DEMO="$ROOT/pubsub/$LANG_ARG/Demo4-Bulk"
+DEMO="$(demo_dir 4)"
+SHIPPING="$(app_dir shipping)"
 RUN="$(run_id)"
 
 # json_norm round-trips JSON through python3 (key order preserved) so spacing never matters.
@@ -14,7 +15,7 @@ json_norm() {
 # batch_lines: prints shipping's batch lines that contain this run's ids.
 batch_lines() {
   local log
-  log="$(app_log Shipping shipping)"
+  log="$(app_log "$SHIPPING" shipping)"
   [ -n "$log" ] || return 0
   grep -F "shipping received batch of" "$log" | grep -F -- "$RUN-" || true
 }
@@ -69,7 +70,7 @@ resp="$(post_json http://localhost:5102/orders/bulk \
 assert_eq "200" "${resp%% *}" "hand-made bulk body returns 200"
 assert_eq '{"statuses": [{"entryId": "e1", "status": "SUCCESS"}, {"entryId": "e2", "status": "DROP"}]}' \
   "$(echo "${resp#* }" | json_norm)" "good entry is SUCCESS, unreadable entry is DROP, in entry order"
-wait_for_log Shipping shipping "shipping dropped unreadable entry e2"
+wait_for_log "$SHIPPING" shipping "shipping dropped unreadable entry e2"
 echo "PASS: shipping logged the dropped entry"
 # A JSON null event is unreadable, and a non-string entryId is answered as "". The bad entry
 # does not fail the batch: e3 after it is still SUCCESS.

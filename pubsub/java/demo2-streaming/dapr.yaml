@@ -5,12 +5,12 @@ common:
     - ../resources
 apps:
   - appID: order-api
-    appDirPath: ./OrderApi
+    appDirPath: ./order-api
     appPort: 5101
     daprHTTPPort: 3510
     command: ["mvn", "-q", "spring-boot:run"]
   - appID: warehouse
-    appDirPath: ./Warehouse
+    appDirPath: ./warehouse
     # No appPort: warehouse has no HTTP server. It opens the stream to the sidecar itself.
     daprHTTPPort: 3511
     command: ["mvn", "-q", "spring-boot:run"]

@@ -5,12 +5,12 @@ common:
     - ../resources
 apps:
   - appID: order-api
-    appDirPath: ./OrderApi
+    appDirPath: ./order-api
     appPort: 5101
     daprHTTPPort: 3510
     command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5101"]
   - appID: warehouse
-    appDirPath: ./Warehouse
+    appDirPath: ./warehouse
     # No appPort: warehouse has no HTTP server. It opens the stream to the sidecar itself.
     daprHTTPPort: 3511
     command: ["uv", "run", "python", "app.py"]

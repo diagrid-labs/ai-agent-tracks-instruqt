@@ -6,12 +6,12 @@ common:
     - ./resources
 apps:
   - appID: order-api
-    appDirPath: ./OrderApi
+    appDirPath: ./order-api
     appPort: 5101
     daprHTTPPort: 3510
     command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5101"]
   - appID: shipping
-    appDirPath: ./Shipping
+    appDirPath: ./shipping
     appPort: 5102
     daprHTTPPort: 3511
     command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5102"]

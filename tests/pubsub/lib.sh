@@ -17,6 +17,41 @@ case "$LANG_ARG" in
   *) echo "usage: $(basename "$0") dotnet|python|java" >&2; exit 2 ;;
 esac
 
+# Folder names differ per language: .NET uses PascalCase (Demo1-Subscriptions/OrderApi),
+# Python and Java use kebab-case (demo1-subscriptions/order-api).
+
+# demo_dir <N>: prints the absolute path of pub/sub demo N for $LANG_ARG.
+demo_dir() {
+  local dotnet kebab
+  case "$1" in
+    1) dotnet=Demo1-Subscriptions;     kebab=demo1-subscriptions ;;
+    2) dotnet=Demo2-Streaming;         kebab=demo2-streaming ;;
+    3) dotnet=Demo3-CloudEvents;       kebab=demo3-cloud-events ;;
+    4) dotnet=Demo4-Bulk;              kebab=demo4-bulk ;;
+    5) dotnet=Demo5-RoutingDeadLetter; kebab=demo5-routing-dead-letter ;;
+    6) dotnet=Demo6-SwapProvider;      kebab=demo6-swap-provider ;;
+    *) die "unknown demo $1" ;;
+  esac
+  if [ "$LANG_ARG" = "dotnet" ]; then
+    echo "$ROOT/pubsub/dotnet/$dotnet"
+  else
+    echo "$ROOT/pubsub/$LANG_ARG/$kebab"
+  fi
+}
+
+# app_dir <app-id>: prints the folder name of an app for $LANG_ARG. Python and Java folders
+# are named after the app id; .NET folders after the project.
+app_dir() {
+  [ "$LANG_ARG" = "dotnet" ] || { echo "$1"; return 0; }
+  case "$1" in
+    order-api) echo OrderApi ;;
+    shipping) echo Shipping ;;
+    invoicing) echo Invoicing ;;
+    warehouse) echo Warehouse ;;
+    *) die "unknown app $1" ;;
+  esac
+}
+
 DEMO_DIR=""
 DEMO_PID=""
 DEMO_PORTS=""
