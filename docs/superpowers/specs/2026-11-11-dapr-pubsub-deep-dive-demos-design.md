@@ -252,6 +252,13 @@ this track is Dapr's `deadLetterTopic`, and it must behave the same on both brok
 
 ## 4. Layout
 
+> **Update 2026-11-12:** folder names are now idiomatic per language. .NET keeps PascalCase
+> (`Demo1-Subscriptions/OrderApi`, as drawn below). Python and Java use kebab-case for both
+> demo and app folders: `demo1-subscriptions/order-api`, `shipping`, `invoicing`,
+> `warehouse`, `demo2-streaming`, `demo3-cloud-events`, `demo4-bulk`,
+> `demo5-routing-dead-letter`, `demo6-swap-provider`. Instruqt assignments carry
+> language-specific paths. App IDs, ports, routes and log lines are unchanged.
+
 ```
 pubsub/
   README.md                       how to run every demo locally (like secrets/README.md)
@@ -261,14 +268,15 @@ pubsub/
     Demo1-Subscriptions/
       dapr.yaml
       resources/subscription-shipping.yaml
-      OrderApi/  Shipping/  Invoicing/      (app folder names per language convention)
+      OrderApi/  Shipping/  Invoicing/      (.NET; order-api/ shipping/ invoicing/ in Python, Java)
     Demo2-Streaming/
     Demo3-CloudEvents/
     Demo4-Bulk/
     Demo5-RoutingDeadLetter/
       resources/subscription-orders.yaml, subscription-dead-letter.yaml, resiliency.yaml
     Demo6-SwapProvider/
-      dapr.yaml                   points at ../Demo5-RoutingDeadLetter apps
+      dapr.yaml                   points at the Demo 5 apps (../Demo5-RoutingDeadLetter in .NET,
+                                  ../demo5-routing-dead-letter in Python, Java)
       resources/pubsub.yaml       RabbitMQ, metadata.name: pubsub
 ```
 

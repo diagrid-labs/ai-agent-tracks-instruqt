@@ -344,6 +344,12 @@ so all six tracks end up consistent.
   `dapr-pub-sub-deep-dive`, so the two repos read the same way. *(Builder's call,
   recorded here as mine — the user specified `<building-block>/<language>` and nothing
   below it.)*
+- **Update 2026-11-12:** folder names are now idiomatic per language, so the
+  `Demo<N>-<Slug>` names above apply to .NET only. .NET keeps PascalCase (`Demo1-ReadSecret`,
+  `Demo2-Scoping/AppA`, matching the `.csproj`). Python and Java use kebab-case
+  (`demo1-read-secret`, `demo2-scoping/app-a`, `demo3-swap-provider`): Python like its
+  pyproject names, Java with the Maven folder equal to the `artifactId`. Instruqt
+  assignments therefore carry language-specific paths. Applied to `secrets/` and `pubsub/`.
 - Component YAML lives beside the code it configures, because the YAML *is* the subject
   matter in act 2 and the learner opens it in the editor tab.
 - Where a challenge swaps providers, the swap target lives in its own
