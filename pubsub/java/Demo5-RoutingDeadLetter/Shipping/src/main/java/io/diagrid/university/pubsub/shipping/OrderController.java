@@ -7,6 +7,7 @@ import io.cloudevents.CloudEvent;
 import io.cloudevents.core.format.EventDeserializationException;
 import io.cloudevents.core.format.EventFormat;
 import io.cloudevents.core.provider.EventFormatProvider;
+import io.cloudevents.jackson.JsonCloudEventData;
 import io.cloudevents.jackson.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,13 +90,21 @@ public class OrderController {
             return null;
         }
         try {
-            // Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
-            // Dapr dependency. The order is in the event's data.
-            CloudEvent event = CLOUD_EVENTS.deserialize(body.getBytes(StandardCharsets.UTF_8));
-            if (event.getData() == null) {
+            // The CloudEvents SDK stops after the first JSON value and turns a body of `null` into
+            // no event at all. The app's mapper rejects anything after the JSON value, so this
+            // check makes both of those unreadable: the body must be exactly one JSON object.
+            if (!mapper.readTree(body).isObject()) {
                 return null;
             }
-            JsonNode data = mapper.readTree(event.getData().toBytes());
+            // Dapr delivers a standard CloudEvent, so the open CloudEvents SDK can read it with no
+            // Dapr dependency.
+            CloudEvent event = CLOUD_EVENTS.deserialize(body.getBytes(StandardCharsets.UTF_8));
+            // The order is in the event's data. Only JSON data is read: data with a non-JSON
+            // content type, or sent as data_base64, comes back from the SDK as plain bytes.
+            if (!(event.getData() instanceof JsonCloudEventData jsonData)) {
+                return null;
+            }
+            JsonNode data = mapper.readTree(jsonData.toBytes());
             return data.path("orderId").isString() ? data : null;
         } catch (EventDeserializationException | JacksonException e) {
             return null;
