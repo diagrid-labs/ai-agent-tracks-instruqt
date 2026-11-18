@@ -1,0 +1,16 @@
+{
+    "name": "order-processor",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "@dapr/dapr": "3.19.0"
+    }
+}

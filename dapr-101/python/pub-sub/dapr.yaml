@@ -1,0 +1,11 @@
+version: 1
+common:
+  resourcesPaths: ["./resources"]
+apps:
+  - appID: order-processor-sdk
+    appDirPath: ./order-processor/
+    appPort: 6002
+    command: ["uv", "run", "python", "app.py"]
+  - appID: checkout-sdk
+    appDirPath: ./checkout/
+    command: ["uv", "run", "python", "app.py"]

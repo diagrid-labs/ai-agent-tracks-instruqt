@@ -163,6 +163,14 @@ secrets/**/.dapr/
 pubsub/**/target/
 pubsub/**/.dapr/
 
+# Dapr 101 track: build output, dependencies and `dapr run -f .` logs.
+dapr-101/**/bin/
+dapr-101/**/obj/
+dapr-101/**/target/
+dapr-101/**/node_modules/
+dapr-101/**/.venv/
+dapr-101/**/.dapr/
+
 ####################
 # OS / Misc
 ####################
