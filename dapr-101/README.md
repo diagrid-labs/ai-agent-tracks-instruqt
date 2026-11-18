@@ -23,3 +23,4 @@ Each folder holds `checkout/`, `order-processor/` and a `dapr.yaml`. Each pub/su
 - The .NET projects target `net10.0` instead of `net8.0`.
 - The pub/sub `dapr.yaml` files use `resourcesPaths: ["./resources"]` instead of `resourcesPath: ../../components/`.
 - `python/pub-sub` no longer has the `order-processor-fastapi` subscriber, and its uv workspace and `uv.lock` are updated to match.
+- The JavaScript `package.json` files no longer have the `start:dapr` script (it pointed at a `components` folder that does not exist here). `dapr.yaml` runs `npm run start`.
