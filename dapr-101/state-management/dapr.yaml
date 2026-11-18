@@ -1,0 +1,10 @@
+# Runs only a Dapr sidecar, without an application, for the State Management lab of dapr-101.
+# The learner is the "application": they call the sidecar's HTTP API on port 3500 with curl.
+# A run template (dapr run -f .) writes the sidecar log to .dapr/logs, so the Dev Dashboard
+# can show it on its Logs page. No resourcesPaths: the sidecar loads the default components
+# in ~/.dapr/components, including the Redis statestore that dapr init created.
+version: 1
+apps:
+  - appID: myapp
+    appDirPath: .
+    daprHTTPPort: 3500

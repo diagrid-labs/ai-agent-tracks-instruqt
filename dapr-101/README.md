@@ -18,6 +18,11 @@ Each folder holds `checkout/`, `order-processor/` and a `dapr.yaml`. Each pub/su
 `resources/pubsub.yaml`, copied from `pub_sub/components/pubsub.yaml`. The upstream `makefile` and
 `README.md` files are left out.
 
+`state-management/` is not from the quickstarts. Its `dapr.yaml` runs only a Dapr sidecar, with the
+app ID `myapp` and HTTP port 3500, for the State Management lab. Learners call the sidecar with
+`curl`. Starting it with `dapr run -f .` writes the sidecar log to `.dapr/logs`, which the Dev
+Dashboard shows on its Logs page. A plain `dapr run` only logs to the terminal.
+
 ## Changes from upstream
 
 - The .NET projects target `net10.0` instead of `net8.0`.
