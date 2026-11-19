@@ -175,6 +175,10 @@ dapr-101/**/node_modules/
 dapr-101/**/.venv/
 dapr-101/**/.dapr/
 
+# Agent tracks: `dapr run -f` logs.
+deepagents/**/.dapr/
+langgraph/**/.dapr/
+
 ####################
 # OS / Misc
 ####################

@@ -100,6 +100,9 @@ dapr init    # once per machine, if you haven't already
 uv run dapr run --app-id supply-chain-auditor-langgraph --resources-path ./resources -- python app.py
 ```
 
+Or use the multi-app run file, which writes the logs to `.dapr/logs` so the
+Dapr Dev Dashboard can show them: `dapr run -f .`
+
 Without `GITHUB_TOKEN` the comment is a **dry-run** (printed, not posted) and
 GitHub reads are unauthenticated (rate-limited). To skip the PR fetch, pass the
 bump explicitly with `DEP_NAMES` / `DEP_PREV_VERSION` / `DEP_NEW_VERSION` —

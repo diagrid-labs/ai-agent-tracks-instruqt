@@ -1,0 +1,14 @@
+# Multi-app run file for a local Dapr sidecar: `dapr run -f .` from this folder.
+# (supply-chain-auditor-langgraph.yaml is the Diagrid Catalyst run file.)
+# The app and sidecar logs go to .dapr/logs, so the Dapr Dev Dashboard can show them.
+# The auditor runs the audit workflow once and exits. It talks to its sidecar over gRPC
+# and serves no HTTP, so there is no appPort. Set OPENAI_API_KEY and the PR_* variables
+# in the shell first, as in the README.
+version: 1
+common:
+  resourcesPaths:
+    - ./resources
+apps:
+  - appID: supply-chain-auditor-langgraph
+    appDirPath: .
+    command: ["uv", "run", "python", "app.py"]

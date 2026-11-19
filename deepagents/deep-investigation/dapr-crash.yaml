@@ -1,0 +1,11 @@
+# Multi-app run file for the crash-and-recover run: `dapr run -f dapr-crash.yaml`.
+# Same app ID and state store as dapr.yaml, so a restart reconnects to the workflow
+# instance investigation-7326. The logs go to .dapr/logs for the Dapr Dev Dashboard.
+version: 1
+common:
+  resourcesPaths:
+    - ./resources
+apps:
+  - appID: deepagent
+    appDirPath: .
+    command: ["uv", "run", "python", "investigate-crash.py", "--issue", "7326"]
