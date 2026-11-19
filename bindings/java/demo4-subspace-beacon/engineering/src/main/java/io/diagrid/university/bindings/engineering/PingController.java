@@ -1,11 +1,12 @@
 package io.diagrid.university.bindings.engineering;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 
-import io.dapr.client.DaprClient;
-import io.dapr.client.domain.HttpExtension;
-import io.dapr.utils.TypeRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -29,13 +30,15 @@ public class PingController {
     record CommsStatus(String status, Integer lastSignalStrength) {
     }
 
-    private final DaprClient daprClient;
+    // One HTTP client for all ticks. It talks to the Dapr sidecar, never to the beacon directly.
+    private static final HttpClient httpClient = HttpClient.newHttpClient();
+    private static final String DAPR_HTTP_PORT = System.getenv().getOrDefault("DAPR_HTTP_PORT", "3520");
+
     private final ShipDb shipDb;
     private final StartupGate gate;
     private final JsonMapper mapper;
 
-    PingController(DaprClient daprClient, ShipDb shipDb, StartupGate gate, JsonMapper mapper) {
-        this.daprClient = daprClient;
+    PingController(ShipDb shipDb, StartupGate gate, JsonMapper mapper) {
         this.shipDb = shipDb;
         this.gate = gate;
         this.mapper = mapper;
@@ -49,14 +52,23 @@ public class PingController {
 
         Ping ping;
         try {
-            // Service invocation: call the "ping" method of the app with ID subspace-beacon. The
-            // sidecar finds the app by its ID, so there is no host or port in this code.
-            byte[] data = daprClient.invokeMethod("subspace-beacon", "ping", null, HttpExtension.GET,
-                    TypeRef.BYTE_ARRAY).block();
-            ping = mapper.readValue(data, Ping.class);
+            // Service invocation: the request goes to our own sidecar. The sidecar resolves the
+            // target app from the dapr-app-id header, so there is no host or port of the beacon
+            // in this code. The URL path is just the method name "ping".
+            HttpRequest request = HttpRequest.newBuilder()
+                    .GET()
+                    .uri(URI.create("http://localhost:" + DAPR_HTTP_PORT + "/ping"))
+                    .header("dapr-app-id", "subspace-beacon")
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException("subspace-beacon answered " + response.statusCode());
+            }
+            ping = mapper.readValue(response.body(), Ping.class);
         } catch (Exception e) {
-            // The beacon may still be starting. Answer 200 anyway, so the sidecar does not log a
-            // binding error on every tick; the next tick tries again.
+            // The beacon may still be starting, so an unreachable beacon is expected: we log it and move on.
+            // Answering 200 is deliberate: a 500 would change nothing, because cron ticks are never retried;
+            // the next tick simply tries again.
             log.warn("engineering beacon unreachable");
             return ResponseEntity.ok().build();
         }

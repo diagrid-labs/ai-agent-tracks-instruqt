@@ -9,7 +9,6 @@ import io.dapr.client.domain.InvokeBindingRequest;
 import io.dapr.utils.TypeRef;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 

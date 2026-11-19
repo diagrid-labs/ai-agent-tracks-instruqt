@@ -37,12 +37,9 @@ assert json.dumps(r["lastSignalStrength"]) in sys.argv[2].split("|"), r
   echo "PASS: $3"
 }
 
-# Before the first tick the table is empty. If a ping slipped in already, accept signal 12.
-if [ "$(count_log "$ENG" engineering "engineering pinged relay-theta-9")" = "0" ]; then
-  status_is SEARCHING null "no pings yet: SEARCHING with null"
-else
-  status_is SEARCHING 12 "first ping already logged: SEARCHING with 12"
-fi
+# Before the first tick the table is empty, but a ping may already have slipped in (signal 12),
+# between the log check and the status call. Accept either.
+status_is SEARCHING "null|12" "before the second ping: SEARCHING with null or 12"
 
 # The cron binding fires every 5 s; the first tick comes one interval after the sidecar starts.
 wait_for_log "$ENG" engineering 'engineering pinged relay-theta-9 signalStrength=27 message="static"' 120

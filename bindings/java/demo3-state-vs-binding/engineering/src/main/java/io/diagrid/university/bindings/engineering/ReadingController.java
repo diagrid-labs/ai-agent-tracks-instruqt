@@ -56,11 +56,13 @@ public class ReadingController {
             // The same reading is written twice, through two different Dapr APIs.
             //
             // 1. State API: Dapr owns the table. We hand over a key and a value, Dapr decides how
-            //    to store it (a `state` table with key, JSON value, etag and timestamps). There
+            //    to store it (a `state` table with key, JSON value and timestamps; the ETag is Postgres's
+            //    hidden xmin column, so \d state doesn't list it). There
             //    is no schema and no SQL in our code, and the call is portable: swap the
             //    statestore component for Redis or Cosmos DB and this line stays the same. The
             //    API also gives us ETags, TTL and transactions for free.
             String key = stateKey(reading.readingId());
+            // The Java SDK sets contentType: application/json itself, so there is no metadata to pass.
             daprClient.saveState(STATE_STORE, key, reading).block();
             log.info("engineering saved reading {} to statestore (key={})", reading.readingId(), key);
 
@@ -77,8 +79,9 @@ public class ReadingController {
         return ResponseEntity.ok().build();
     }
 
-    // State API read: one reading by key. Get-by-key is all the State API offers for lookups;
-    // "all readings above 900 K" needs a query, which is what GET /readings does with SQL.
+    // State API read: one reading by key. The State API reads by key (one or in bulk). Filtering on
+    // values needs the alpha State Query API, which this track doesn't use; with the binding it's a
+    // one-line WHERE (see GET /readings).
     @GetMapping("/state/{readingId}")
     public ResponseEntity<?> getState(@PathVariable("readingId") String readingId) {
         gate.await();
@@ -97,8 +100,8 @@ public class ReadingController {
         }
     }
 
-    // Binding read, with SQL: the filter and the ordering are ours. The State API cannot do this
-    // against the reading values without a store-specific query.
+    // Binding read, with SQL: the filter and the ordering are ours, so "all readings above 900 K"
+    // is a one-line WHERE. The State API would need the alpha State Query API for that.
     @GetMapping("/readings")
     public ResponseEntity<?> getReadings(@RequestParam(name = "minTemp", required = false) String minTemp) {
         // Missing minTemp means 0. A present but malformed one (empty, 9.5, abc, too long) is a 400.

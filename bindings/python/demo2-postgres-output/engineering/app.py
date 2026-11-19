@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from dapr.clients import DaprClient
-from dapr.clients.grpc._response import BindingResponse
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
@@ -69,7 +68,7 @@ _client: DaprClient | None = None
 _gate = threading.Event()
 
 
-def _invoke(operation: str, sql: str, args: tuple) -> BindingResponse:
+def _invoke(operation: str, sql: str, args: tuple):
     # The binding name and the operation say where and what; the SQL and its parameters travel
     # as request metadata. "params" is a JSON array in a string, matching $1, $2...
     metadata = {"sql": sql}
@@ -78,7 +77,7 @@ def _invoke(operation: str, sql: str, args: tuple) -> BindingResponse:
     return _client.invoke_binding(BINDING, operation, binding_metadata=metadata)
 
 
-def exec_sql(sql: str, *args) -> BindingResponse:
+def exec_sql(sql: str, *args):
     # "exec" runs a statement that changes data (INSERT, DELETE) and returns no rows.
     return _invoke("exec", sql, args)
 

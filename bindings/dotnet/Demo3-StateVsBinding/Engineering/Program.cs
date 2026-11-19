@@ -28,7 +28,8 @@ app.MapPost("/warp-core-scan", async Task<IResult> (DaprClient daprClient, ShipD
         // The same reading is written twice, through two different Dapr APIs.
         //
         // 1. State API: Dapr owns the table. We hand over a key and a value, Dapr decides how
-        //    to store it (a `state` table with key, JSON value, etag and timestamps). There
+        //    to store it (a `state` table with key, JSON value and timestamps; the ETag is Postgres's
+        //    hidden xmin column, so \d state doesn't list it). There
         //    is no schema and no SQL in our code, and the call is portable: swap the
         //    statestore component for Redis or Cosmos DB and this line stays the same. The
         //    API also gives us ETags, TTL and transactions for free.
@@ -54,8 +55,9 @@ app.MapPost("/warp-core-scan", async Task<IResult> (DaprClient daprClient, ShipD
     }
 });
 
-// State API read: one reading by key. Get-by-key is all the State API offers for lookups;
-// "all readings above 900 K" needs a query, which is what GET /readings does with SQL.
+// State API read: one reading by key. The State API reads by key (one or in bulk). Filtering on
+// values needs the alpha State Query API, which this track doesn't use; with the binding it's a
+// one-line WHERE (see GET /readings).
 app.MapGet("/state/{readingId}", async Task<IResult> (string readingId, DaprClient daprClient, StartupGate gate,
     ILogger<Program> logger) =>
 {
@@ -75,8 +77,8 @@ app.MapGet("/state/{readingId}", async Task<IResult> (string readingId, DaprClie
     }
 });
 
-// Binding read, with SQL: the filter and the ordering are ours. The State API cannot do this
-// against the reading values without a store-specific query.
+// Binding read, with SQL: the filter and the ordering are ours, so "all readings above 900 K"
+// is a one-line WHERE. The State API would need the alpha State Query API for that.
 app.MapGet("/readings", async Task<IResult> (HttpRequest request, ShipDb shipDb, StartupGate gate,
     ILogger<Program> logger) =>
 {

@@ -31,8 +31,9 @@ app.MapPost("/beacon-ping", async Task<IResult> ([FromKeyedServices("subspace-be
     }
     catch (Exception)
     {
-        // The beacon may still be starting. Answer 200 anyway, so the sidecar does not log a
-        // binding error on every tick; the next tick tries again.
+        // The beacon may still be starting, so an unreachable beacon is expected: we log it and move on.
+        // Answering 200 is deliberate: a 500 would change nothing, because cron ticks are never retried;
+        // the next tick simply tries again.
         logger.LogWarning("engineering beacon unreachable");
         return TypedResults.Ok();
     }

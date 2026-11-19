@@ -3,7 +3,8 @@ kind: Component
 metadata:
   # The component name `statestore` is what the app passes to the State API. Like ship-db it
   # points at the same Postgres database, but Dapr owns the table here: it creates a `state`
-  # table (key, JSON value, etag, timestamps) and the app only gets and sets values by key.
+  # table (key, JSON value, timestamps) and the app only gets and sets values by key. (The ETag
+  # is Postgres's hidden xmin column, so \d state doesn't list it.)
   name: statestore
 spec:
   type: state.postgresql

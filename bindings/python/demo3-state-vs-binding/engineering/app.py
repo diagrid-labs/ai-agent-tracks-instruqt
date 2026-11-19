@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 
 from dapr.clients import DaprClient
-from dapr.clients.grpc._response import BindingResponse
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
@@ -75,7 +74,7 @@ _client: DaprClient | None = None
 _gate = threading.Event()
 
 
-def _invoke(operation: str, sql: str, args: tuple) -> BindingResponse:
+def _invoke(operation: str, sql: str, args: tuple):
     # The binding name and the operation say where and what; the SQL and its parameters travel
     # as request metadata. "params" is a JSON array in a string, matching $1, $2...
     metadata = {"sql": sql}
@@ -84,7 +83,7 @@ def _invoke(operation: str, sql: str, args: tuple) -> BindingResponse:
     return _client.invoke_binding(BINDING, operation, binding_metadata=metadata)
 
 
-def exec_sql(sql: str, *args) -> BindingResponse:
+def exec_sql(sql: str, *args):
     # "exec" runs a statement that changes data (INSERT, DELETE) and returns no rows.
     return _invoke("exec", sql, args)
 
@@ -149,7 +148,8 @@ async def warp_core_scan() -> Response:
         # The same reading is written twice, through two different Dapr APIs.
         #
         # 1. State API: Dapr owns the table. We hand over a key and a value, Dapr decides how
-        #    to store it (a `state` table with key, JSON value, etag and timestamps). There
+        #    to store it (a `state` table with key, JSON value and timestamps; the ETag is Postgres's
+        #    hidden xmin column, so \d state doesn't list it). There
         #    is no schema and no SQL in our code, and the call is portable: swap the
         #    statestore component for Redis or Cosmos DB and this line stays the same. The
         #    API also gives us ETags, TTL and transactions for free.
@@ -185,8 +185,9 @@ async def warp_core_scan() -> Response:
     return Response(status_code=200)
 
 
-# State API read: one reading by key. Get-by-key is all the State API offers for lookups;
-# "all readings above 900 K" needs a query, which is what GET /readings does with SQL.
+# State API read: one reading by key. The State API reads by key (one or in bulk). Filtering on
+# values needs the alpha State Query API, which this track doesn't use; with the binding it's a
+# one-line WHERE (see GET /readings).
 @app.get("/state/{reading_id}")
 async def get_state(reading_id: str) -> JSONResponse:
     await _wait_for_gate()
@@ -202,8 +203,8 @@ async def get_state(reading_id: str) -> JSONResponse:
     return JSONResponse(asdict(WarpCoreReading(**json.loads(state.data))))
 
 
-# Binding read, with SQL: the filter and the ordering are ours. The State API cannot do this
-# against the reading values without a store-specific query.
+# Binding read, with SQL: the filter and the ordering are ours, so "all readings above 900 K"
+# is a one-line WHERE. The State API would need the alpha State Query API for that.
 @app.get("/readings")
 async def get_readings(minTemp: str | None = None) -> JSONResponse:
     # Missing minTemp means 0. A present but malformed one (empty, 9.5, abc, too long) is a 400.

@@ -219,12 +219,12 @@ Dapr created the `state` table and prefixes every key with the app ID (`engineer
 
 | | State API (`statestore`) | Binding (`ship-db`) |
 |---|---|---|
-| Who owns the table | Dapr: `state` with key, JSON value, ETag and timestamps | You: your own schema |
+| Who owns the table | Dapr: `state` with key, JSON value and timestamps (the ETag is Postgres's hidden `xmin` column, so `\d state` does not list it) | You: your own schema |
 | What you write | A key and a value | SQL |
 | What you can do | Get, set and delete by key, plus ETags (concurrency), TTL and transactions | Filter, sort and bulk-delete with any SQL |
 | Portability | Works the same across 30+ stores: swap the component, keep the code | Tied to Postgres: swapping the component will not work |
 
-Use the State API when you want key-value storage that stays portable. Use the binding when you want the full power of SQL and accept the tie to Postgres. "All readings above 900 K" is a one-line `WHERE` with the binding, and not something the State API can do against the values.
+Use the State API when you want key-value storage that stays portable. Use the binding when you want the full power of SQL and accept the tie to Postgres. "All readings above 900 K" is a one-line `WHERE` with the binding, and not something the State API does by key. The State API reads by key (one or in bulk). Filtering on values needs the alpha State Query API, which this track does not use.
 
 ### Demo 4: Subspace beacon
 
@@ -242,7 +242,7 @@ curl -s http://localhost:5202/ping
 
 Every 5 seconds the `beacon-ping` cron component (scoped to `engineering` with `scopes`, so the beacon's sidecar does not load it) calls `engineering`, which does three things:
 
-1. Calls `subspace-beacon` through service invocation, by app ID: .NET `DaprClient.CreateInvokeHttpClient("subspace-beacon")`, Python `invoke_method`, Java `invokeMethod`. There is no host or port of the beacon in the code.
+1. Calls `subspace-beacon` through service invocation, by app ID: .NET `DaprClient.CreateInvokeHttpClient("subspace-beacon")`, Python `invoke_method`, Java a plain HTTP call to the sidecar with a `dapr-app-id: subspace-beacon` header. There is no host or port of the beacon in the code.
 2. Inserts the answer into `comms_log` through `ship-db`.
 3. Logs it:
 
@@ -256,7 +256,7 @@ engineering pinged relay-theta-9 signalStrength=81 message="channel open"
 engineering pinged relay-theta-9 signalStrength=94 message="channel open"
 ```
 
-If the beacon is unreachable, for example while it is still starting, `engineering` logs `engineering beacon unreachable`, stores nothing and still answers `200`, so the sidecar does not log a binding error on every tick.
+If the beacon is unreachable, for example while it is still starting, `engineering` logs `engineering beacon unreachable`, stores nothing and still answers `200`. An unreachable beacon is expected while it starts, and a `500` would change nothing because cron ticks are never retried.
 
 Ask `engineering` how communications are going:
 
@@ -294,7 +294,7 @@ The `id` keeps counting up across runs (the startup clear deletes rows but does 
 
 ## Resilience note: when the cron handler fails
 
-A cron tick is fire-and-forget. If your handler answers non-2xx, the sidecar does not retry that tick, the schedule does not shift, and daprd logs nothing at the default level. This was checked by making the Demo 1 handler return `500`: the app saw exactly one request per tick and no extras. That is why the Postgres handlers in Demos 2 to 4 log their own errors (`engineering binding call failed: ...`), and why Demo 4 answers `200` when the beacon is unreachable.
+A cron tick is fire-and-forget. If your handler answers non-2xx, the sidecar does not retry that tick, the schedule does not shift, and daprd logs nothing at the default level. This was checked by making the Demo 1 handler return `500`: the app saw exactly one request per tick and no extras. That is why the Postgres handlers in Demos 2 to 4 log their own errors (`engineering binding call failed: ...`), and why Demo 4 logs an unreachable beacon and answers `200`: a `500` would change nothing.
 
 ## Smoke tests
 

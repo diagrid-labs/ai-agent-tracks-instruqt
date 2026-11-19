@@ -51,18 +51,27 @@ assert json.load(sys.stdin) == {"error": "INVALID_MIN_TEMP"}
 done
 echo "PASS: invalid minTemp values answer INVALID_MIN_TEMP"
 
-# Purge: a row older than one minute disappears at the next 30 s tick.
-psql_q "INSERT INTO warp_core_readings (reading_id, stardate, core_temp_k, plasma_flow) VALUES ('old-1', 1.0, 900, 0.80)" >/dev/null
-psql_q "UPDATE warp_core_readings SET recorded_at = now() - interval '2 minutes' WHERE reading_id = 'old-1'" >/dev/null
-# A purge line from an earlier tick does not count, so wait for a new one.
+# Purge: a row older than one minute disappears at a 30 s tick. Read the purge count first and
+# insert the row already aged, so no tick can see it fresh or run before we start counting.
 PURGES_BEFORE="$(count_log "$ENG" engineering "engineering purged old readings")"
+psql_q "INSERT INTO warp_core_readings (reading_id, stardate, core_temp_k, plasma_flow, recorded_at) VALUES ('old-1', 1.0, 900, 0.80, now() - interval '2 minutes')" >/dev/null
+# A purge line from an earlier tick does not count, so wait for a new one, then for the row to go.
 i=0
 while [ "$(count_log "$ENG" engineering "engineering purged old readings")" -le "$PURGES_BEFORE" ]; do
   i=$((i + 1))
   [ "$i" -le 45 ] || die "no new 'engineering purged old readings' line after 45s"
   sleep 1
 done
-assert_eq "0" "$(psql_q "SELECT count(*) FROM warp_core_readings WHERE reading_id = 'old-1'")" \
-  "old-1 was purged"
+i=0
+while [ "$(psql_q "SELECT count(*) FROM warp_core_readings WHERE reading_id = 'old-1'")" != "0" ]; do
+  i=$((i + 1))
+  [ "$i" -le 45 ] || die "old-1 is still in warp_core_readings after 45s"
+  sleep 1
+done
+echo "PASS: old-1 was purged"
+# Rows younger than a minute (the scan inserts one every few seconds) must survive the purge.
+[ "$(psql_q "SELECT count(*) FROM warp_core_readings WHERE recorded_at > now() - interval '1 minute'")" -gt 0 ] \
+  || die "no fresh reading is left after the purge"
+echo "PASS: fresh readings survived the purge"
 
 echo "Demo 2 ($LANG_ARG) smoke test passed"
