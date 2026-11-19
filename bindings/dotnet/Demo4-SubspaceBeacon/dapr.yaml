@@ -1,0 +1,18 @@
+version: 1
+common:
+  # The shared ship-db component, plus this demo's own beacon-ping cron binding.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: engineering
+    appDirPath: ./Engineering
+    appPort: 5201
+    daprHTTPPort: 3520
+    command: ["dotnet", "run", "--urls", "http://localhost:5201"]
+  # A plain HTTP app with no Dapr SDK: engineering reaches it by app ID through its sidecar.
+  - appID: subspace-beacon
+    appDirPath: ./SubspaceBeacon
+    appPort: 5202
+    daprHTTPPort: 3521
+    command: ["dotnet", "run", "--urls", "http://localhost:5202"]

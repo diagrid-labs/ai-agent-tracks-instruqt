@@ -1,0 +1,19 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  # The component name is the route. Dapr calls POST /beacon-ping on the app at every tick.
+  name: beacon-ping
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    # Every 5 seconds, so the beacon's signal firms up while you watch.
+    - name: schedule
+      value: "@every 5s"
+    # An input binding: Dapr calls the app. (An output binding is the other way around.)
+    - name: direction
+      value: "input"
+# Only engineering's sidecar loads this binding. Without the scope, the beacon's sidecar would
+# fire the same cron and POST /beacon-ping to an app that has no such endpoint.
+scopes:
+  - engineering

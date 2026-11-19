@@ -1,0 +1,94 @@
+package io.diagrid.university.bindings.engineering;
+
+import java.util.List;
+import java.util.Map;
+
+import io.dapr.client.DaprClient;
+import io.dapr.client.domain.HttpExtension;
+import io.dapr.utils.TypeRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.json.JsonMapper;
+
+@RestController
+public class PingController {
+
+    private static final Logger log = LoggerFactory.getLogger(PingController.class);
+
+    // What the beacon answers.
+    record Ping(String beaconId, int signalStrength, String message, double stardate) {
+    }
+
+    // Response body. Record components are serialized in declaration order, so the JSON keys
+    // come out in the contract's order. A null lastSignalStrength is written as JSON null.
+    record CommsStatus(String status, Integer lastSignalStrength) {
+    }
+
+    private final DaprClient daprClient;
+    private final ShipDb shipDb;
+    private final StartupGate gate;
+    private final JsonMapper mapper;
+
+    PingController(DaprClient daprClient, ShipDb shipDb, StartupGate gate, JsonMapper mapper) {
+        this.daprClient = daprClient;
+        this.shipDb = shipDb;
+        this.gate = gate;
+        this.mapper = mapper;
+    }
+
+    // Input binding: the beacon-ping cron component makes the sidecar call this plain HTTP
+    // endpoint every 5 seconds. The path is the component name. No annotation needed.
+    @PostMapping("/beacon-ping")
+    public ResponseEntity<?> beaconPing() {
+        gate.await();
+
+        Ping ping;
+        try {
+            // Service invocation: call the "ping" method of the app with ID subspace-beacon. The
+            // sidecar finds the app by its ID, so there is no host or port in this code.
+            byte[] data = daprClient.invokeMethod("subspace-beacon", "ping", null, HttpExtension.GET,
+                    TypeRef.BYTE_ARRAY).block();
+            ping = mapper.readValue(data, Ping.class);
+        } catch (Exception e) {
+            // The beacon may still be starting. Answer 200 anyway, so the sidecar does not log a
+            // binding error on every tick; the next tick tries again.
+            log.warn("engineering beacon unreachable");
+            return ResponseEntity.ok().build();
+        }
+
+        try {
+            // Output binding: call the component named ship-db with the "exec" operation. The SQL
+            // goes in metadata.sql, its values in metadata.params as a JSON array for $1..$4.
+            shipDb.exec(ShipDb.INSERT_PING,
+                    ping.beaconId(), ping.signalStrength(), ping.message(), ping.stardate()).block();
+            log.info("engineering pinged {} signalStrength={} message=\"{}\"",
+                    ping.beaconId(), ping.signalStrength(), ping.message());
+        } catch (Exception e) {
+            log.warn("engineering binding call failed: {}", e.getMessage());
+        }
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/comms/status")
+    public ResponseEntity<?> commsStatus() {
+        gate.await();
+        try {
+            // Output binding with the "query" operation. Each row is a list whose values follow
+            // the SELECT list, so we read the signal by position.
+            List<List<Object>> rows = shipDb.query(ShipDb.LAST_PINGS);
+            List<Integer> signals = rows.stream().map(row -> ((Number) row.get(0)).intValue()).toList();
+            boolean established = signals.size() == 3 && signals.stream().allMatch(signal -> signal >= 40);
+            // The newest row is first (ORDER BY id DESC). No rows means null.
+            Integer last = signals.isEmpty() ? null : signals.get(0);
+            return ResponseEntity.ok(new CommsStatus(established ? "ESTABLISHED" : "SEARCHING", last));
+        } catch (Exception e) {
+            log.warn("engineering binding call failed: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "BINDING_FAILED"));
+        }
+    }
+}

@@ -1,0 +1,18 @@
+version: 1
+common:
+  # The shared ship-db component, plus this demo's own beacon-ping cron binding.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: engineering
+    appDirPath: ./engineering
+    appPort: 5201
+    daprHTTPPort: 3520
+    command: ["mvn", "-q", "spring-boot:run"]
+  # A plain HTTP app with no Dapr SDK: engineering reaches it by app ID through its sidecar.
+  - appID: subspace-beacon
+    appDirPath: ./subspace-beacon
+    appPort: 5202
+    daprHTTPPort: 3521
+    command: ["mvn", "-q", "spring-boot:run"]
