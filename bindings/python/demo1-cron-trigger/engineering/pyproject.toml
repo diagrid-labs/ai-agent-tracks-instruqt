@@ -1,0 +1,9 @@
+[project]
+name = "engineering"
+version = "0.1.0"
+description = "Receives the warp core scan from a Dapr cron input binding"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+]

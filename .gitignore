@@ -163,6 +163,10 @@ secrets/**/.dapr/
 pubsub/**/target/
 pubsub/**/.dapr/
 
+# Dapr bindings track: Maven build output and `dapr run -f .` logs.
+bindings/**/target/
+bindings/**/.dapr/
+
 # Dapr 101 track: build output, dependencies and `dapr run -f .` logs.
 dapr-101/**/bin/
 dapr-101/**/obj/

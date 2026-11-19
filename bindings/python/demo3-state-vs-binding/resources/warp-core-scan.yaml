@@ -1,0 +1,15 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  # The component name is the route. Dapr calls POST /warp-core-scan on the app at every tick.
+  name: warp-core-scan
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    # Change "@every 10s" to "@every 3s" and restart: the scans speed up, the code stays the same.
+    - name: schedule
+      value: "@every 10s"
+    # An input binding: Dapr calls the app. (An output binding is the other way around.)
+    - name: direction
+      value: "input"

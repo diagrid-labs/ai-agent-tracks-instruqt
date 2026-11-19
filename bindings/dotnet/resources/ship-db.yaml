@@ -1,0 +1,16 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: ship-db
+spec:
+  # The component name `ship-db` is what the apps pass to the output binding call. The apps
+  # never mention PostgreSQL, only this name.
+  type: bindings.postgresql
+  version: v1
+  metadata:
+  # Local-only credential for the demo container. The secrets track shows how to replace
+  # this value with a `secretKeyRef`.
+  - name: connectionString
+    value: "host=localhost port=5432 user=dapr password=dapr dbname=dapr sslmode=disable"
+  - name: direction
+    value: output

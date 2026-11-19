@@ -1,0 +1,12 @@
+version: 1
+common:
+  # The shared ship-db component, plus this demo's cron binding and statestore.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: engineering
+    appDirPath: ./engineering
+    appPort: 5201
+    daprHTTPPort: 3520
+    command: ["uv", "run", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "5201"]

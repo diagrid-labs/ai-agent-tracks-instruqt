@@ -1,0 +1,10 @@
+[project]
+name = "engineering"
+version = "0.1.0"
+description = "Pings the subspace beacon on a cron tick and stores the answer in PostgreSQL"
+requires-python = ">=3.12"
+dependencies = [
+    "dapr==1.19.0",
+    "fastapi",
+    "uvicorn",
+]
