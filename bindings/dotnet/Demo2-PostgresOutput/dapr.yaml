@@ -1,0 +1,12 @@
+version: 1
+common:
+  # The shared ship-db component, plus this demo's own cron bindings.
+  resourcesPaths:
+    - ../resources
+    - ./resources
+apps:
+  - appID: engineering
+    appDirPath: ./Engineering
+    appPort: 5201
+    daprHTTPPort: 3520
+    command: ["dotnet", "run", "--urls", "http://localhost:5201"]

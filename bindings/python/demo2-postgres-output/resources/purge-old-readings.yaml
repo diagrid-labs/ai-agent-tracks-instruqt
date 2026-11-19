@@ -1,0 +1,14 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  # Dapr calls POST /purge-old-readings on the app every 30 seconds.
+  name: purge-old-readings
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    - name: schedule
+      value: "@every 30s"
+    # Input again: the cron binding only ever calls the app, it has no output side.
+    - name: direction
+      value: "input"

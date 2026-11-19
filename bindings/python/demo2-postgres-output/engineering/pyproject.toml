@@ -1,0 +1,10 @@
+[project]
+name = "engineering"
+version = "0.1.0"
+description = "Stores warp core readings in PostgreSQL through a Dapr output binding"
+requires-python = ">=3.12"
+dependencies = [
+    "dapr==1.19.0",
+    "fastapi",
+    "uvicorn",
+]
