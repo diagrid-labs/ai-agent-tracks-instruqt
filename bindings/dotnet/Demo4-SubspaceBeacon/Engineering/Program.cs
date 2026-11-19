@@ -1,8 +1,12 @@
 using Dapr.Client;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 // One DaprClient for the app's lifetime: it holds the gRPC connection to the sidecar.
 builder.Services.AddSingleton(new DaprClientBuilder().Build());
+// Service invocation client: an HttpClient whose requests go through the Dapr sidecar, which
+// resolves the target by app ID. One instance for the app's lifetime, not one per tick.
+builder.Services.AddKeyedSingleton("subspace-beacon", (_, _) => DaprClient.CreateInvokeHttpClient("subspace-beacon"));
 builder.Services.AddSingleton<ShipDb>();
 builder.Services.AddSingleton<StartupGate>();
 builder.Services.AddHostedService<StartupClear>();
@@ -11,19 +15,19 @@ var app = builder.Build();
 
 // Input binding: the beacon-ping cron component makes the sidecar call this plain HTTP endpoint
 // every 5 seconds. The path is the component name. No Dapr attribute needed.
-app.MapPost("/beacon-ping", async Task<IResult> (DaprClient daprClient, ShipDb shipDb, StartupGate gate,
-    ILogger<Program> logger) =>
+app.MapPost("/beacon-ping", async Task<IResult> ([FromKeyedServices("subspace-beacon")] HttpClient beacon, ShipDb shipDb,
+    StartupGate gate, ILogger<Program> logger) =>
 {
     await gate.WaitAsync();
 
     Ping ping;
     try
     {
-        // Service invocation: call the "ping" method of the app with ID subspace-beacon. The
-        // sidecar finds the app by its ID, so there is no host or port in this code.
-#pragma warning disable CS0618 // the SDK marks InvokeMethodAsync obsolete; it is still the simplest way to show the concept
-        ping = await daprClient.InvokeMethodAsync<Ping>(HttpMethod.Get, "subspace-beacon", "ping");
-#pragma warning restore CS0618
+        // Service invocation: this HttpClient goes through the Dapr sidecar, which finds the app
+        // with ID subspace-beacon. The URL is just the method name "ping"; there is no host or
+        // port of the beacon in this code.
+        ping = await beacon.GetFromJsonAsync<Ping>("ping")
+            ?? throw new InvalidOperationException("empty answer from subspace-beacon");
     }
     catch (Exception)
     {

@@ -21,7 +21,7 @@ BEACON="$(app_dir subspace-beacon)"
 
 wait_for_log "$ENG" engineering "engineering cleared comms_log for a fresh run" 180
 
-# status_is <expected status> <expected lastSignalStrength or null> <label>
+# status_is <expected status> <expected lastSignalStrength or null; a|b for alternatives> <label>
 status_is() {
   local result
   result="$(get_json "http://localhost:5201/comms/status")"
@@ -32,7 +32,7 @@ pairs = json.load(sys.stdin, object_pairs_hook=lambda p: p)
 assert [k for k, _ in pairs] == ["status", "lastSignalStrength"], pairs
 r = dict(pairs)
 assert r["status"] == sys.argv[1], r
-assert json.dumps(r["lastSignalStrength"]) == sys.argv[2], r
+assert json.dumps(r["lastSignalStrength"]) in sys.argv[2].split("|"), r
 ' "$1" "$2" || die "$3: wrong status: ${result#* }"
   echo "PASS: $3"
 }
@@ -49,7 +49,8 @@ wait_for_log "$ENG" engineering 'engineering pinged relay-theta-9 signalStrength
 status_is SEARCHING 27 "signal 27 is still SEARCHING"
 
 wait_for_log "$ENG" engineering 'signalStrength=81 message="channel open"' 60
-status_is ESTABLISHED 81 "signal 81 after 45, 63 is ESTABLISHED"
+# The next tick may already have stored 94, so accept 81 or 94.
+status_is ESTABLISHED "81|94" "signal 81 after 45, 63 is ESTABLISHED"
 
 wait_for_log "$BEACON" subspace-beacon "subspace-beacon answered ping signalStrength=45" 10
 
