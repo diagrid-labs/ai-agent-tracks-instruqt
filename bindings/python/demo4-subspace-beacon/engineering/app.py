@@ -1,15 +1,36 @@
-import asyncio
 import json
 import logging
-import threading
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from dapr.clients import DaprClient
-from fastapi import FastAPI, Response
+import grpc
+from dapr.aio.clients import DaprClient
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("engineering")
+
+
+# Fields are snake_case in Python and camelCase in JSON (beacon_id <-> beaconId).
+class CamelModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, validate_by_name=True)
+
+
+# What the beacon answers.
+class Ping(CamelModel):
+    beacon_id: str
+    signal_strength: int
+    message: str
+    stardate: float
+
+
+class CommsStatus(CamelModel):
+    status: str
+    last_signal_strength: int | None
 
 
 # The SQL the engineering app runs. Every value goes through $1, $2... placeholders, never
@@ -20,86 +41,85 @@ INSERT_PING = (
 )
 LAST_PINGS = "SELECT signal_strength FROM comms_log ORDER BY id DESC LIMIT 3"
 
-# The app only knows the output binding's component name, never that PostgreSQL is behind it.
-BINDING = "ship-db"
 
-# The one DaprClient of the app. Creating it waits for the sidecar, so it is created in the
-# startup thread below; the cron handlers and GET endpoints wait on the gate until it exists.
-_client: DaprClient | None = None
-_gate = threading.Event()
+# Thin wrapper around the ship-db output binding. The app only knows the component name
+# "ship-db", never that PostgreSQL is behind it.
+class ShipDb:
+    BINDING = "ship-db"
 
+    def __init__(self, client: DaprClient) -> None:
+        self._client = client
 
-def _invoke(operation: str, sql: str, args: tuple):
-    # The binding name and the operation say where and what; the SQL and its parameters travel
-    # as request metadata. "params" is a JSON array in a string, matching $1, $2...
-    metadata = {"sql": sql}
-    if args:
-        metadata["params"] = json.dumps(list(args))
-    return _client.invoke_binding(BINDING, operation, binding_metadata=metadata)
+    async def exec(self, sql: str, *args: object) -> None:
+        # "exec" runs a statement that changes data (INSERT, DELETE) and returns no rows.
+        await self._invoke("exec", sql, args)
 
+    async def query(self, sql: str, *args: object) -> list[list]:
+        # "query" runs a SELECT. The binding answers with a JSON array of arrays: one inner
+        # list per row, values in the order of the SELECT list, so callers read them by position.
+        response = await self._invoke("query", sql, args)
+        return json.loads(response.data)
 
-def exec_sql(sql: str, *args):
-    # "exec" runs a statement that changes data (INSERT, DELETE) and returns no rows.
-    return _invoke("exec", sql, args)
-
-
-def query_sql(sql: str, *args) -> list:
-    # "query" runs a SELECT. The binding answers with a JSON array of arrays: one inner list
-    # per row, values in the order of the SELECT list, so callers read them by position.
-    return json.loads(_invoke("query", sql, args).data)
-
-
-def _startup_clear() -> None:
-    global _client
-    try:
-        # Creating the client waits for the sidecar, which starts alongside the app.
-        _client = DaprClient()
-        # Each run starts with an empty table, so pings from an earlier run (or another
-        # language) never show up. The app does this itself because Postgres outlives it.
-        exec_sql(CLEAR_COMMS)
-        logger.info("engineering cleared comms_log for a fresh run")
-    except Exception as error:
-        logger.warning("engineering could not clear comms_log: %s", error)
-    finally:
-        # Open the gate even when the clear failed: the app keeps running.
-        _gate.set()
-
-
-# Cron ticks and GET requests wait here, so a ping stored by an early tick is never wiped
-# by the clear. The wait runs in a thread so the event loop stays free.
-async def _wait_for_gate() -> None:
-    await asyncio.to_thread(_gate.wait)
-
-
-def _binding_failed(error: Exception) -> JSONResponse:
-    logger.warning("engineering binding call failed: %s", error)
-    return JSONResponse({"error": "BINDING_FAILED"}, status_code=500)
+    async def _invoke(self, operation: str, sql: str, args: tuple):
+        # The binding name and the operation say where and what; the SQL and its parameters
+        # travel as request metadata. "params" is a JSON array in a string, matching $1, $2...
+        metadata = {"sql": sql}
+        if args:
+            metadata["params"] = json.dumps(args)
+        return await self._client.invoke_binding(self.BINDING, operation, binding_metadata=metadata)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    # A background thread, so the app starts serving while it waits for the sidecar.
-    threading.Thread(target=_startup_clear, daemon=True).start()
-    yield
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # One async Dapr client for the app's lifetime. Creating it waits for the sidecar, and
+    # `async with` closes it on shutdown.
+    async with DaprClient() as client:
+        ship_db = ShipDb(client)
+        try:
+            # Each run starts with an empty table, so pings from an earlier run (or another
+            # language) never show up. The app does this itself because Postgres outlives it.
+            # It happens before the app serves requests, so no cron tick can race the clear.
+            await ship_db.exec(CLEAR_COMMS)
+            logger.info("engineering cleared comms_log for a fresh run")
+        except grpc.RpcError as error:
+            logger.warning("engineering could not clear comms_log: %s", error)
+        app.state.dapr = client
+        app.state.ship_db = ship_db
+        yield
 
 
 app = FastAPI(lifespan=lifespan)
 
 
+def get_dapr(request: Request) -> DaprClient:
+    return request.app.state.dapr
+
+
+def get_ship_db(request: Request) -> ShipDb:
+    return request.app.state.ship_db
+
+
+DaprDep = Annotated[DaprClient, Depends(get_dapr)]
+ShipDbDep = Annotated[ShipDb, Depends(get_ship_db)]
+
+
+# A failed binding call surfaces as a gRPC error. One handler turns it into the same 500
+# for every endpoint, so the endpoints only describe the happy path.
+@app.exception_handler(grpc.RpcError)
+async def binding_failed(_: Request, error: grpc.RpcError) -> JSONResponse:
+    logger.warning("engineering binding call failed: %s", error)
+    return JSONResponse({"error": "BINDING_FAILED"}, status_code=500)
+
+
 # Input binding: the beacon-ping cron component makes the sidecar call this plain HTTP endpoint
 # every 5 seconds. The path is the component name. No decorator, no Dapr package for the trigger.
 @app.post("/beacon-ping")
-async def beacon_ping() -> Response:
-    await _wait_for_gate()
+async def beacon_ping(dapr: DaprDep, ship_db: ShipDbDep) -> Response:
     try:
         # Service invocation: call the "ping" method of the app with ID subspace-beacon. The
         # sidecar finds the app by its ID, so there is no host or port in this code.
-        response = await asyncio.to_thread(_client.invoke_method, "subspace-beacon", "ping", http_verb="GET")
-        ping = json.loads(response.data)
-        beacon_id = ping["beaconId"]
-        signal_strength = ping["signalStrength"]
-        message = ping["message"]
-        stardate = ping["stardate"]
+        response = await dapr.invoke_method("subspace-beacon", "ping", http_verb="GET")
+        ping = Ping.model_validate_json(response.data)
     except Exception:
         # The beacon may still be starting, so an unreachable beacon is expected: we log it and move on.
         # Answering 200 is deliberate: a 500 would change nothing, because cron ticks are never retried;
@@ -110,30 +130,26 @@ async def beacon_ping() -> Response:
     try:
         # Output binding: call the component named ship-db with the "exec" operation. The SQL
         # goes in metadata.sql, its values in metadata.params as a JSON array for $1..$4.
-        await asyncio.to_thread(exec_sql, INSERT_PING, beacon_id, signal_strength, message, stardate)
+        await ship_db.exec(INSERT_PING, ping.beacon_id, ping.signal_strength, ping.message, ping.stardate)
         logger.info(
-            'engineering pinged %s signalStrength=%d message="%s"', beacon_id, signal_strength, message
+            'engineering pinged %s signalStrength=%d message="%s"',
+            ping.beacon_id,
+            ping.signal_strength,
+            ping.message,
         )
-    except Exception as error:
+    except grpc.RpcError as error:
         logger.warning("engineering binding call failed: %s", error)
     return Response(status_code=200)
 
 
-@app.get("/comms/status")
-async def comms_status() -> JSONResponse:
-    await _wait_for_gate()
-    try:
-        # Output binding with the "query" operation. Each row is a list whose values follow the
-        # SELECT list, so we read the signal by position.
-        rows = await asyncio.to_thread(query_sql, LAST_PINGS)
-        signals = [row[0] for row in rows]
-    except Exception as error:
-        return _binding_failed(error)
+@app.get("/comms/status", response_model=CommsStatus)
+async def comms_status(ship_db: ShipDbDep) -> CommsStatus:
+    # Output binding with the "query" operation. Each row is a list whose values follow the
+    # SELECT list, so we read the signal by position.
+    signals = [row[0] for row in await ship_db.query(LAST_PINGS)]
     established = len(signals) == 3 and all(signal >= 40 for signal in signals)
     # The newest row is first (ORDER BY id DESC). No rows means null.
-    return JSONResponse(
-        {
-            "status": "ESTABLISHED" if established else "SEARCHING",
-            "lastSignalStrength": signals[0] if signals else None,
-        }
+    return CommsStatus(
+        status="ESTABLISHED" if established else "SEARCHING",
+        last_signal_strength=signals[0] if signals else None,
     )

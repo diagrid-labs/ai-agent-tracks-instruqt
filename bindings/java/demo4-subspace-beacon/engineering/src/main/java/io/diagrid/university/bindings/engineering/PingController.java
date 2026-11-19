@@ -1,21 +1,17 @@
 package io.diagrid.university.bindings.engineering;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.List;
-import java.util.Map;
 
+import io.dapr.exceptions.DaprException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
-import tools.jackson.databind.json.JsonMapper;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+// A failed Dapr call in GET /comms/status throws; ApiErrors turns it into an error response.
 @RestController
 public class PingController {
 
@@ -30,47 +26,33 @@ public class PingController {
     record CommsStatus(String status, Integer lastSignalStrength) {
     }
 
-    // One HTTP client for all ticks. It talks to the Dapr sidecar, never to the beacon directly.
-    private static final HttpClient httpClient = HttpClient.newHttpClient();
-    private static final String DAPR_HTTP_PORT = System.getenv().getOrDefault("DAPR_HTTP_PORT", "3520");
-
+    private final RestClient beacon;
     private final ShipDb shipDb;
     private final StartupGate gate;
-    private final JsonMapper mapper;
 
-    PingController(ShipDb shipDb, StartupGate gate, JsonMapper mapper) {
+    PingController(RestClient beaconClient, ShipDb shipDb, StartupGate gate) {
+        this.beacon = beaconClient;
         this.shipDb = shipDb;
         this.gate = gate;
-        this.mapper = mapper;
     }
 
     // Input binding: the beacon-ping cron component makes the sidecar call this plain HTTP
     // endpoint every 5 seconds. The path is the component name. No annotation needed.
+    // This method always answers 200: a 500 would change nothing, because cron ticks are never
+    // retried; the next tick simply tries again.
     @PostMapping("/beacon-ping")
-    public ResponseEntity<?> beaconPing() {
+    public void beaconPing() {
         gate.await();
 
         Ping ping;
         try {
-            // Service invocation: the request goes to our own sidecar. The sidecar resolves the
-            // target app from the dapr-app-id header, so there is no host or port of the beacon
-            // in this code. The URL path is just the method name "ping".
-            HttpRequest request = HttpRequest.newBuilder()
-                    .GET()
-                    .uri(URI.create("http://localhost:" + DAPR_HTTP_PORT + "/ping"))
-                    .header("dapr-app-id", "subspace-beacon")
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) {
-                throw new IllegalStateException("subspace-beacon answered " + response.statusCode());
-            }
-            ping = mapper.readValue(response.body(), Ping.class);
-        } catch (Exception e) {
+            // Service invocation: the request goes to our own sidecar, which forwards it to the
+            // app with ID subspace-beacon (see beaconClient). The path is just the method name.
+            ping = beacon.get().uri("/ping").retrieve().body(Ping.class);
+        } catch (RestClientException e) {
             // The beacon may still be starting, so an unreachable beacon is expected: we log it and move on.
-            // Answering 200 is deliberate: a 500 would change nothing, because cron ticks are never retried;
-            // the next tick simply tries again.
             log.warn("engineering beacon unreachable");
-            return ResponseEntity.ok().build();
+            return;
         }
 
         try {
@@ -80,27 +62,22 @@ public class PingController {
                     ping.beaconId(), ping.signalStrength(), ping.message(), ping.stardate()).block();
             log.info("engineering pinged {} signalStrength={} message=\"{}\"",
                     ping.beaconId(), ping.signalStrength(), ping.message());
-        } catch (Exception e) {
+        } catch (DaprException e) {
             log.warn("engineering binding call failed: {}", e.getMessage());
         }
-        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/comms/status")
-    public ResponseEntity<?> commsStatus() {
+    public CommsStatus commsStatus() {
         gate.await();
-        try {
-            // Output binding with the "query" operation. Each row is a list whose values follow
-            // the SELECT list, so we read the signal by position.
-            List<List<Object>> rows = shipDb.query(ShipDb.LAST_PINGS);
-            List<Integer> signals = rows.stream().map(row -> ((Number) row.get(0)).intValue()).toList();
-            boolean established = signals.size() == 3 && signals.stream().allMatch(signal -> signal >= 40);
-            // The newest row is first (ORDER BY id DESC). No rows means null.
-            Integer last = signals.isEmpty() ? null : signals.get(0);
-            return ResponseEntity.ok(new CommsStatus(established ? "ESTABLISHED" : "SEARCHING", last));
-        } catch (Exception e) {
-            log.warn("engineering binding call failed: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "BINDING_FAILED"));
-        }
+        // Output binding with the "query" operation. Each row is a list whose values follow
+        // the SELECT list, so we read the signal by position.
+        List<Integer> signals = shipDb.query(ShipDb.LAST_PINGS).stream()
+                .map(row -> ((Number) row.get(0)).intValue())
+                .toList();
+        boolean established = signals.size() == 3 && signals.stream().allMatch(signal -> signal >= 40);
+        // The newest row is first (ORDER BY id DESC). No rows means null.
+        Integer last = signals.isEmpty() ? null : signals.get(0);
+        return new CommsStatus(established ? "ESTABLISHED" : "SEARCHING", last);
     }
 }

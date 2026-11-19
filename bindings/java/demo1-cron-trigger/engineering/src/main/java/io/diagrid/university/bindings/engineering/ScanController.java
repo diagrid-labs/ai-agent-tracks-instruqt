@@ -2,7 +2,6 @@ package io.diagrid.university.bindings.engineering;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,11 +17,10 @@ public class ScanController {
     }
 
     // An input binding needs no Dapr code at all: the sidecar calls a plain HTTP endpoint whose
-    // path is the component name (warp-core-scan). No annotation, no Dapr SDK.
+    // path is the component name (warp-core-scan). No annotation, no Dapr SDK. Returning
+    // normally answers 200, and any 2xx tells Dapr the tick was handled.
     @PostMapping("/warp-core-scan")
-    public ResponseEntity<Void> warpCoreScan() {
+    public void warpCoreScan() {
         log.info("{}", readings.createReading().toLogLine());
-        // Any 2xx tells Dapr the tick was handled.
-        return ResponseEntity.ok().build();
     }
 }

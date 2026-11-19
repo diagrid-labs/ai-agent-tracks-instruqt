@@ -1,0 +1,48 @@
+package io.diagrid.university.bindings.engineering;
+
+import io.dapr.exceptions.DaprException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+// Turns exceptions into the error bodies of the HTTP contract, in one place, so the controller
+// methods only describe the happy path.
+@RestControllerAdvice
+class ApiErrors {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
+
+    record ErrorBody(String error) {
+    }
+
+    // Thrown for a minTemp query parameter that is present but not a whole number.
+    static class InvalidMinTempException extends RuntimeException {
+    }
+
+    // Thrown when the state store has no reading under the requested key.
+    static class ReadingNotFoundException extends RuntimeException {
+    }
+
+    // A failed Dapr call surfaces as a DaprException when the controller blocks on it.
+    @ExceptionHandler(DaprException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    ErrorBody bindingFailed(DaprException e) {
+        log.warn("engineering binding call failed: {}", e.getMessage());
+        return new ErrorBody("BINDING_FAILED");
+    }
+
+    @ExceptionHandler(InvalidMinTempException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ErrorBody invalidMinTemp() {
+        return new ErrorBody("INVALID_MIN_TEMP");
+    }
+
+    @ExceptionHandler(ReadingNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    ErrorBody readingNotFound() {
+        return new ErrorBody("NOT_FOUND");
+    }
+}

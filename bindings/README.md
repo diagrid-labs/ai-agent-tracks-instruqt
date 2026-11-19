@@ -242,7 +242,7 @@ curl -s http://localhost:5202/ping
 
 Every 5 seconds the `beacon-ping` cron component (scoped to `engineering` with `scopes`, so the beacon's sidecar does not load it) calls `engineering`, which does three things:
 
-1. Calls `subspace-beacon` through service invocation, by app ID: .NET `DaprClient.CreateInvokeHttpClient("subspace-beacon")`, Python `invoke_method`, Java a plain HTTP call to the sidecar with a `dapr-app-id: subspace-beacon` header. There is no host or port of the beacon in the code.
+1. Calls `subspace-beacon` through service invocation, by app ID: .NET `DaprClient.CreateInvokeHttpClient("subspace-beacon")`, Python `invoke_method`, Java a Spring `RestClient` that calls its own sidecar with a `dapr-app-id: subspace-beacon` header. There is no host or port of the beacon in the code.
 2. Inserts the answer into `comms_log` through `ship-db`.
 3. Logs it:
 
