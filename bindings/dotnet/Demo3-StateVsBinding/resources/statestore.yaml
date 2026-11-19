@@ -1,0 +1,15 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  # The component name `statestore` is what the app passes to the State API. Like ship-db it
+  # points at the same Postgres database, but Dapr owns the table here: it creates a `state`
+  # table (key, JSON value, etag, timestamps) and the app only gets and sets values by key.
+  name: statestore
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+  # Local-only credential for the demo container. The secrets track shows how to replace
+  # this value with a `secretKeyRef`.
+  - name: connectionString
+    value: "host=localhost port=5432 user=dapr password=dapr dbname=dapr sslmode=disable"
