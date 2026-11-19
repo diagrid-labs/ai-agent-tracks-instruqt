@@ -45,6 +45,8 @@ uv run dapr run --app-id deepagent --resources-path ./resources -- python invest
 cat investigation-7326.md
 ```
 
+Or use the multi-app run file, which writes the logs to `.dapr/logs` so the Dapr Dev Dashboard can show them: `dapr run -f .` (and `dapr run -f dapr-crash.yaml` for the crash run below).
+
 Verify that Dapr persisted the workflow state in Redis by listing the keys using the Redis CLI:
 
 ```bash

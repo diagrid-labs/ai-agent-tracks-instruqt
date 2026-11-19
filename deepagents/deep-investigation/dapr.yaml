@@ -1,0 +1,11 @@
+# Multi-app run file for the durable investigation: `dapr run -f .` from this folder.
+# The app and sidecar logs go to .dapr/logs, so the Dapr Dev Dashboard can show them.
+# The app talks to its sidecar over gRPC and serves no HTTP, so there is no appPort.
+version: 1
+common:
+  resourcesPaths:
+    - ./resources
+apps:
+  - appID: deepagent
+    appDirPath: .
+    command: ["uv", "run", "python", "investigate-durable.py", "--issue", "7326"]
