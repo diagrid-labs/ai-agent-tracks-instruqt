@@ -1,6 +1,7 @@
 package io.diagrid.university.bindings.engineering;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -17,7 +18,7 @@ public class ReadingFactory {
         double stardate = Math.round((78000.0 + (Instant.now().getEpochSecond() - 1767225600L) / 3600.0) * 10.0) / 10.0;
         ThreadLocalRandom random = ThreadLocalRandom.current();
         return new WarpCoreReading(
-                String.format("wc-%04d", counter.incrementAndGet()),
+                String.format(Locale.ROOT, "wc-%04d", counter.incrementAndGet()),
                 stardate,
                 random.nextInt(850, 951),
                 random.nextInt(70, 101) / 100.0);
