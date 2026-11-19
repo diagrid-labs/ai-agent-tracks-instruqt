@@ -1,0 +1,11 @@
+version: 1
+common:
+  # Just this demo's own folder: the cron binding is the only component Demo 1 needs.
+  resourcesPaths:
+    - ./resources
+apps:
+  - appID: engineering
+    appDirPath: ./engineering
+    appPort: 5201
+    daprHTTPPort: 3520
+    command: ["mvn", "-q", "spring-boot:run"]

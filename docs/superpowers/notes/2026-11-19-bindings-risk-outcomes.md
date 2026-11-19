@@ -48,11 +48,11 @@ A second `DELETE FROM warp_core_readings` on the empty table returned `Metadata.
 | Python `DaprClient.invoke_binding` | **Yes.** Returns `BindingResponse`; read `resp.binding_metadata['rows-affected']`. | `dapr/clients/grpc/client.py:419` (`return BindingResponse(response.data, dict(response.metadata), call.initial_metadata())`); `dapr/clients/grpc/_response.py:312` (`binding_metadata` property). |
 | Java `io.dapr:dapr-sdk` 1.19.0 | **No.** No overload returns the response metadata. | Every `DaprClient.invokeBinding` overload (`DaprClient.java:396, 407, 419, 431, 444, 458, 467, 477`) returns `Mono<Void>`, `Mono<byte[]>` or `Mono<T>` (the deserialized data only). The implementation, `DaprClientImpl.java:763-815`, reads `it.getMetadataMap()` only to look up `statusCode` for HTTP-binding errors (line 797-798) and returns `it.getData()` deserialized (line 807). `InvokeBindingRequest` has request metadata only (`getMetadata`/`setMetadata`, `InvokeBindingRequest.java:60,64`). `DaprPreviewClient` has no `invokeBinding` at all. The `responseMetadata` at line 786 is gRPC trailer/header metadata, not the binding's response map. |
 
-**Consequence: Java cannot read the rows-affected count through the SDK, so spec §7 risk 2 applies to Java, and Demo 2's `engineering purged <n> old readings` line can't be produced identically in all three languages with `PURGE_READINGS` as an `exec`.** Left for the user to decide (options in the Task 2 report): (a) log `engineering purged old readings` without a count in all languages, or (b) purge with `DELETE ... RETURNING reading_id` through `query` and count the returned rows in all languages. No fallback has been chosen.
+**Consequence: Java cannot read the rows-affected count through the SDK, so spec §7 risk 2 applies to Java.** Decision (user, 2026-11-19): **no count. The purge stays an `exec` and every language logs `engineering purged old readings`.**
 
 ## 3. Cron behaviour on failure
 
-Not yet verified (checked in Task 3).
+**Verified (Task 3, .NET, Dapr 1.19.1): a `500` from the handler is not retried and does not move the schedule.** The handler was temporarily changed to log the reading and return `500`; the demo ran 38 s with `@every 10s`. The app saw exactly three `POST /warp-core-scan` requests (all answered `500`), one per tick, and no extra request between ticks. daprd logged nothing about the failures at its default level (no warning, no error line), so a failing handler is invisible in the sidecar log. Only the app log shows the `500`. The handler was reverted afterwards.
 
 ## 4. `params` metadata
 
@@ -99,4 +99,4 @@ Task 3 must remember: the `state` and `dapr_metadata` tables are created by the 
 
 ## 6. Input-binding route probing
 
-Not yet verified (checked in Task 3).
+**Verified (Task 3, all three languages): no `OPTIONS` probe is sent, and the cron binding needs no route registration.** At startup daprd only requested `GET /dapr/config` (answered `404` by the .NET app, which is fine) and logged `successful init for input binding (warp-core-scan (bindings.cron/v1))`. The first `POST /warp-core-scan` arrived one full interval (10 s) after startup, with no `OPTIONS /warp-core-scan` in the app log. The route is simply `POST /<component name>`; a plain minimal-API / FastAPI / Spring `@PostMapping` endpoint works with no Dapr attribute, decorator or SDK in any of the three languages. The cron binding sends `Content-Type: application/json` with an empty body.
